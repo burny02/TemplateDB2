@@ -45,6 +45,8 @@ Public Class Template
     Public Sub ExecuteSQL(SQLCode As String)
         'Execute a SQL Command - No return
 
+        Dim ErrorMessage As String = vbNullString
+
         'Create connection & Command
         Dim cmd As New OleDb.OleDbCommand(SQLCode, con)
         Dim trans As OleDb.OleDbTransaction
@@ -68,16 +70,16 @@ Public Class Template
 
 
         Catch ex As Exception
-            MsgBox(ex.Message)
+            ErrorMessage = ex.Message
             Call TryRollBack(trans)
 
         Finally
-
             'Close Off & Clean up
             UpdateActiveUsers(False)
             CloseCon()
             cmd = Nothing
             trans = Nothing
+            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
 
@@ -149,6 +151,8 @@ Public Class Template
     Public Sub CreateDataSet(SQLCode As String, BindSource As BindingSource, ctl As Object)
         'Create a new dataset, set a bindining source and object to that binding source
 
+        Dim ErrorMessage As String = vbNullString
+
         Try
             'Open connection
             OpenCon()
@@ -166,12 +170,13 @@ Public Class Template
             ctl.DataSource = BindSource
 
         Catch ex As Exception
-            MsgBox(ex.Message)
+            ErrorMessage = ex.Message
 
         Finally
 
             'Close off & Clean up
             CloseCon()
+            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
 
@@ -180,6 +185,7 @@ Public Class Template
     Public Sub UpdateBackend(ctl As Object)
         'Saving function to update access backend
 
+        Dim ErrorMessage As String = vbNullString
 
         'Is the data dirty / has errors that have auto-undone
         If CurrentDataSet.HasChanges() = False Then
@@ -207,19 +213,18 @@ Public Class Template
             MsgBox("Table Updated")
             'Remove any error messages & accept changes
             CurrentDataSet.AcceptChanges()
+            Call Refresher(ctl)
 
         Catch ex As Exception
-            MsgBox(ex.Message)
+            ErrorMessage = ex.Message
             Call TryRollBack(trans)
 
         Finally
-
             'Close off & clean up
             UpdateActiveUsers(False)
             CloseCon()
             trans = Nothing
-            'Requery
-            Call Refresher(ctl)
+            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
 
@@ -230,7 +235,7 @@ Public Class Template
 
         'Variable if user wants to save
         Dim Cancel As Boolean = False
-
+        Dim ErrorMessage As String = vbNullString
 
         'Is there currently a dataset to close?
         If IsNothing(CurrentDataSet) Then
@@ -257,16 +262,19 @@ Public Class Template
             End If
 
         Catch ex As Exception
-            MsgBox(ex.Message)
+            ErrorMessage = ex.Message
         Finally
             'Pass back whether clean up happened
             UnloadData = Cancel
+            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
         End Try
 
     End Function
 
     Public Function TempDataSet(SQLCode As String) As DataSet
         'Create a temporary dataset for things such as combo box which arent based on the initial query
+
+        Dim ErrorMessage As String = vbNullString
 
         Try
             'Open connection
@@ -278,12 +286,13 @@ Public Class Template
             TempDataAdapter.Fill(TempDataSet)
 
         Catch ex As Exception
-            MsgBox(ex.Message)
+            errormessage = ex.Message
             TempDataSet = Nothing
         Finally
 
             'Close off & Clean up
             CloseCon()
+            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
 
@@ -294,6 +303,7 @@ Public Class Template
         Dim da As New OleDb.OleDbDataAdapter(SQLCode, ConnectString)
         Dim dt As New DataTable
         Dim Output As String = vbNullString
+        Dim ErrorMessage As String = vbNullString
 
         Try
             da.Fill(dt)
@@ -309,12 +319,13 @@ Public Class Template
             Output = Left(Output, Len(Output) - 1)
 
         Catch ex As Exception
-            MsgBox(ex.Message)
+            ErrorMessage = ex.Message
 
         Finally
             CreateCSVString = Output
             dt = Nothing
             da = Nothing
+            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
         End Try
 
     End Function
@@ -350,8 +361,13 @@ Public Class Template
         Dim ErrorMessage As String = "The database is currently locked. Please contact David Burnside"
 
         If QueryTest(SQLString) <> 0 Then
-            MsgBox(ErrorMessage)
-            Call Quitter(True)
+            If GetUserName <> "d.burnside" Then
+                MsgBox(ErrorMessage)
+                Call Quitter(True)
+            Else
+                MsgBox("Database is locked")
+
+            End If
         End If
 
 
@@ -474,6 +490,7 @@ Public Class Template
         Dim cmd As New OleDb.OleDbCommand("DELETE * FROM " & ActiveUsersTable & " WHERE User='" & GetUserName & "'", con)
         Dim cmd2 As New OleDb.OleDbCommand("INSERT INTO " & ActiveUsersTable & " VALUES ('" & GetUserName & "')", con)
 
+        OpenCon()
         If Insert = True Then
             cmd.ExecuteNonQuery()
             cmd2.ExecuteNonQuery()
@@ -483,4 +500,11 @@ Public Class Template
 
     End Sub
 
+    Public Sub SingleClick(sender As Object, e As DataGridViewCellEventArgs)
+        Dim dgv As DataGridView = CType(sender, DataGridView)
+
+        If dgv(e.ColumnIndex, e.RowIndex).EditType.ToString() = "System.Windows.Forms.DataGridViewComboBoxEditingControl" Then
+            SendKeys.Send("{F4}")
+        End If
+    End Sub
 End Class

@@ -1,6 +1,6 @@
 ﻿Imports System.Data
 Imports System.Data.OleDb.OleDbConnection
-Public Class Template
+Public Class CentralFunctions
     Declare Function GetUserName Lib "advapi32.dll" Alias _
         "GetUserNameA" (ByVal lpBuffer As String, _
         ByRef nSize As Integer) As Integer
@@ -8,7 +8,6 @@ Public Class Template
     Public CurrentDataAdapter As OleDb.OleDbDataAdapter = Nothing
     Public CurrentBindingSource As BindingSource = Nothing
     Private ConnectString As String = Nothing
-    Public Login As Boolean = False
     Private UserTable As String = Nothing
     Private UserField As String = Nothing
     Private LockTable As String = Nothing
@@ -60,7 +59,7 @@ Public Class Template
 
 
         Try
-            
+
             'Set the action as a transaction
             cmd.Transaction = trans
             'Execute SQL Command
@@ -93,7 +92,7 @@ Public Class Template
         Do While Attempts <= 3
             Try
                 OpenCon()
-                trans.Commit()
+                Trans.Commit()
                 Exit Sub
 
             Catch ex As OleDb.OleDbException
@@ -230,6 +229,16 @@ Public Class Template
 
     End Sub
 
+    Protected Sub Quitter()
+
+        On Error Resume Next
+
+        UpdateActiveUsers(False)
+        CloseCon()
+        Application.Exit()
+
+    End Sub
+
     Public Function UnloadData() As Boolean
         'Close down currnt dataset, dataadapter & bindingsource
 
@@ -271,7 +280,7 @@ Public Class Template
 
     End Function
 
-    Public Function TempDataSet(SQLCode As String) As DataSet
+    Public Function TempDataTable(SQLCode As String) As DataTable
         'Create a temporary dataset for things such as combo box which arent based on the initial query
 
         Dim ErrorMessage As String = vbNullString
@@ -281,13 +290,13 @@ Public Class Template
             OpenCon()
             'New temporary data adapter and dataset
             Dim TempDataAdapter = New OleDb.OleDbDataAdapter(SQLCode, con)
-            TempDataSet = New DataSet()
+            TempDataTable = New DataTable()
             'Use temp adapter to fill temp dataset
-            TempDataAdapter.Fill(TempDataSet)
+            TempDataAdapter.Fill(TempDataTable)
 
         Catch ex As Exception
-            errormessage = ex.Message
-            TempDataSet = Nothing
+            ErrorMessage = ex.Message
+            TempDataTable = Nothing
         Finally
 
             'Close off & Clean up
@@ -330,7 +339,7 @@ Public Class Template
 
     End Function
 
-    Public Sub Refresher(DataItem As Object)
+    Private Sub Refresher(DataItem As Object)
 
         Try
             Call CreateDataSet(CurrentDataAdapter.SelectCommand.CommandText, CurrentBindingSource, DataItem)
@@ -348,9 +357,7 @@ Public Class Template
 
         If QueryTest(SQLString) = 0 Then
             MsgBox(ErrorMessage)
-            Call Quitter(True)
-        Else
-            Login = True
+            Call Quitter()
         End If
 
     End Sub
@@ -363,7 +370,7 @@ Public Class Template
         If QueryTest(SQLString) <> 0 Then
             If GetUserName <> "d.burnside" Then
                 MsgBox(ErrorMessage)
-                Call Quitter(True)
+                Call Quitter()
             Else
                 MsgBox("Database is locked")
 
@@ -373,44 +380,15 @@ Public Class Template
 
     End Sub
 
-    Private Sub LockUnlock()
+    Protected Function GetUserName() As String
 
-        Dim SQLTest As String = "SELECT * FROM " & LockTable
-        Dim SQLInsert As String = "INSERT INTO " & LockTable & " Values ('" & GetUserName() & "')"
-        Dim SQLDelete As String = "DELETE * FROM" & LockTable
-        Dim Message As String
-
-        If QueryTest(SQLTest) = 0 Then
-            ExecuteSQL(SQLInsert)
-            Message = "Locked"
-        Else
-            ExecuteSQL(SQLDelete)
-            Message = "Unlocked"
-        End If
-
-        MsgBox(Message)
-
-    End Sub
-
-    Public Function GetUserName() As String
         Dim iReturn As Integer
         Dim userName As String
         userName = New String(CChar(" "), 50)
         iReturn = GetUserName(userName, 50)
         GetUserName = userName.Substring(0, userName.IndexOf(Chr(0)))
+
     End Function
-
-    Public Sub Quitter(Optional CloseAnyway As Boolean = False)
-
-        On Error Resume Next
-
-        If Login = False Or CloseAnyway = True Then
-            CloseCon()
-            UpdateActiveUsers(False)
-            Application.Exit()
-        End If
-
-    End Sub
 
     Public Sub SetPrivate(UserTbl As String, _
                           UserFld As String, _
@@ -437,22 +415,6 @@ Public Class Template
         CurrentDataAdapter.UpdateCommand.Connection = con
         CurrentDataAdapter.DeleteCommand.Connection = con
         Command.Connection = con
-
-    End Sub
-
-    Public Sub ErrorHandler(sender As Object, e As Object)
-
-        Dim Obj As Object
-
-        Try
-            If TypeOf (sender) Is DataGridView Then
-                Obj = CType(sender, DataGridView)
-                Obj.Rows(e.RowIndex).Cells(e.ColumnIndex).ErrorText = e.exception.message
-            End If
-        Catch ex As Exception
-            MsgBox(ex.Message)
-        End Try
-
 
     End Sub
 
@@ -500,11 +462,5 @@ Public Class Template
 
     End Sub
 
-    Public Sub SingleClick(sender As Object, e As DataGridViewCellEventArgs)
-        Dim dgv As DataGridView = CType(sender, DataGridView)
 
-        If dgv(e.ColumnIndex, e.RowIndex).EditType.ToString() = "System.Windows.Forms.DataGridViewComboBoxEditingControl" Then
-            SendKeys.Send("{F4}")
-        End If
-    End Sub
 End Class

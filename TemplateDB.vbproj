@@ -109,6 +109,7 @@
     <Import Include="System.Threading.Tasks" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="OverClass.vb" />
     <Compile Include="My Project\Form1.designer.vb">
       <DependentUpon>Form1.vb</DependentUpon>
     </Compile>
@@ -126,6 +127,7 @@
       <DesignTimeSharedInput>True</DesignTimeSharedInput>
     </Compile>
     <Compile Include="CentralClass.vb" />
+    <Compile Include="UniversalEventsClass.vb" />
   </ItemGroup>
   <ItemGroup>
     <None Include="My Project\app.manifest" />

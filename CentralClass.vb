@@ -325,7 +325,7 @@ Public Class CentralFunctions
 
             Next
 
-            Output = Left(Output, Len(Output) - 1)
+            If Output <> vbNullString Then Output = Left(Output, Len(Output) - 1)
 
         Catch ex As Exception
             ErrorMessage = ex.Message
@@ -376,7 +376,6 @@ Public Class CentralFunctions
 
             End If
         End If
-
 
     End Sub
 
@@ -462,5 +461,19 @@ Public Class CentralFunctions
 
     End Sub
 
+    Public Function SQLDate(varDate As Object) As String
+
+        If IsDate(varDate) Then
+            If DateValue(varDate) = varDate Then
+                SQLDate = Format$(varDate, "\#MM\/dd\/yyyy\#")
+            Else
+                SQLDate = Format$(varDate, "\#MM\/dd\/yyyy HH\:mm\:ss\#")
+            End If
+        Else
+            SQLDate = ""
+        End If
+
+        'ALWAYS SQLCOMMAND date as a string like #1/1/2000# - The # tells it that is it american format
+    End Function
 
 End Class

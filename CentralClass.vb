@@ -41,13 +41,20 @@ Public Class CentralFunctions
 
     End Function
 
-    Public Sub ExecuteSQL(SQLCode As String)
+    Public Function ExecuteSQL(SQLCodeOrCmd As Object, Optional ReturnID As Boolean = False) As Object
         'Execute a SQL Command - No return
 
         Dim ErrorMessage As String = vbNullString
+        Dim Returner As Object = Nothing
+        Dim Cmd As OleDb.OleDbCommand = Nothing
 
         'Create connection & Command
-        Dim cmd As New OleDb.OleDbCommand(SQLCode, con)
+        If TypeOf (SQLCodeOrCmd) Is String Then
+            Cmd = New OleDb.OleDbCommand(SQLCodeOrCmd, con)
+        ElseIf TypeOf (SQLCodeOrCmd) Is OleDb.OleDbCommand Then
+            Cmd = New OleDb.OleDbCommand(SQLCodeOrCmd.CommandText, con)
+        End If
+
         Dim trans As OleDb.OleDbTransaction
         Dim Attempts As Integer = 0
 
@@ -66,11 +73,16 @@ Public Class CentralFunctions
             cmd.ExecuteNonQuery()
             'If OK. Commit changes
             Call TryCommit(trans)
+            If ReturnID = True Then
+                cmd.CommandText = "SELECT @@Identity"
+                Returner = cmd.ExecuteScalar()
+            End If
 
 
         Catch ex As Exception
             ErrorMessage = ex.Message
             Call TryRollBack(trans)
+            Returner = Nothing
 
         Finally
             'Close Off & Clean up
@@ -79,10 +91,11 @@ Public Class CentralFunctions
             cmd = Nothing
             trans = Nothing
             If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
+            ExecuteSQL = Returner
 
         End Try
 
-    End Sub
+    End Function
 
     Private Sub TryCommit(Trans As OleDb.OleDbTransaction)
 
@@ -181,14 +194,14 @@ Public Class CentralFunctions
 
     End Sub
 
-    Public Sub UpdateBackend(ctl As Object)
+    Public Sub UpdateBackend(ctl As Object, Optional DisplayNonDirty As Boolean = True)
         'Saving function to update access backend
 
         Dim ErrorMessage As String = vbNullString
 
         'Is the data dirty / has errors that have auto-undone
         If CurrentDataSet.HasChanges() = False Then
-            MsgBox("Errors present/No changes to upload")
+            If DisplayNonDirty = True Then MsgBox("Errors present/No changes to upload")
             Exit Sub
         End If
 
@@ -339,7 +352,7 @@ Public Class CentralFunctions
 
     End Function
 
-    Private Sub Refresher(DataItem As Object)
+    Public Sub Refresher(DataItem As Object)
 
         Try
             Call CreateDataSet(CurrentDataAdapter.SelectCommand.CommandText, CurrentBindingSource, DataItem)

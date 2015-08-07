@@ -392,7 +392,7 @@ Public Class CentralFunctions
 
     End Sub
 
-    Protected Function GetUserName() As String
+    Public Function GetUserName() As String
 
         Dim iReturn As Integer
         Dim userName As String

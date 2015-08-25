@@ -6,6 +6,8 @@
 
         For Each Control In ctl.Controls
 
+            If Control.Name = "splitter" Then Continue For
+
             If (TypeOf ctl Is Form) Then SetForm(ctl)
 
             If (TypeOf Control Is ComboBox) Then

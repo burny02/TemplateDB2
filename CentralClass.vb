@@ -15,7 +15,7 @@ Public Class CentralFunctions
     Private Contact As String = Nothing
     Private con As OleDb.OleDbConnection
 
-    Public Function QueryTest(SQLCode As String) As Long
+    Public Function SELECTCount(SQLCode As String) As Long
         'Execute a SQL Command and return the number of records
 
         Dim Counter As Long
@@ -37,15 +37,14 @@ Public Class CentralFunctions
             da = Nothing
 
         End Try
-        QueryTest = Counter
+        SELECTCount = Counter
 
     End Function
 
-    Public Function ExecuteSQL(SQLCodeOrCmd As Object, Optional ReturnID As Boolean = False) As Object
-        'Execute a SQL Command - No return
+    Public Sub ExecuteSQL(SQLCodeOrCmd As Object) 'Execute a SQL Command - No return
 
         Dim ErrorMessage As String = vbNullString
-        Dim Returner As Object = Nothing
+        Dim Returner As Long = 0
         Dim Cmd As OleDb.OleDbCommand = Nothing
 
         'Create connection & Command
@@ -62,22 +61,17 @@ Public Class CentralFunctions
         OpenCon()
         UpdateActiveUsers(True)
         trans = con.BeginTransaction(IsolationLevel.ReadCommitted)
-        cmd.Transaction = trans
+        Cmd.Transaction = trans
 
 
         Try
 
             'Set the action as a transaction
-            cmd.Transaction = trans
+            Cmd.Transaction = trans
             'Execute SQL Command
-            cmd.ExecuteNonQuery()
+            Cmd.ExecuteNonQuery()
             'If OK. Commit changes
             Call TryCommit(trans)
-            If ReturnID = True Then
-                cmd.CommandText = "SELECT @@Identity"
-                Returner = cmd.ExecuteScalar()
-            End If
-
 
         Catch ex As Exception
             ErrorMessage = ex.Message
@@ -88,14 +82,13 @@ Public Class CentralFunctions
             'Close Off & Clean up
             UpdateActiveUsers(False)
             CloseCon()
-            cmd = Nothing
+            Cmd = Nothing
             trans = Nothing
             If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
-            ExecuteSQL = Returner
 
         End Try
 
-    End Function
+    End Sub
 
     Private Sub TryCommit(Trans As OleDb.OleDbTransaction)
 
@@ -194,14 +187,14 @@ Public Class CentralFunctions
 
     End Sub
 
-    Public Sub UpdateBackend(ctl As Object, Optional DisplayNonDirty As Boolean = True)
+    Public Sub UpdateBackend(ctl As Object, Optional DisplayMessage As Boolean = True)
         'Saving function to update access backend
 
         Dim ErrorMessage As String = vbNullString
 
         'Is the data dirty / has errors that have auto-undone
         If CurrentDataSet.HasChanges() = False Then
-            If DisplayNonDirty = True Then MsgBox("Errors present/No changes to upload")
+            If DisplayMessage = True Then MsgBox("Errors present/No changes to upload")
             Exit Sub
         End If
 
@@ -222,7 +215,7 @@ Public Class CentralFunctions
             'Use dataadapter to update the backend (Commands already set)
             CurrentDataAdapter.Update(CurrentDataSet)
             Call TryCommit(trans)
-            MsgBox("Table Updated")
+            If DisplayMessage = True Then MsgBox("Table Updated")
             'Remove any error messages & accept changes
             CurrentDataSet.AcceptChanges()
             Call Refresher(ctl)
@@ -368,7 +361,7 @@ Public Class CentralFunctions
         Dim SQLString As String = "SELECT * FROM " & UserTable & " WHERE " & UserField & "='" & GetUserName() & "'"
         Dim ErrorMessage As String = "You do not have permission to use this database. Please contact David Burnside or " & Contact
 
-        If QueryTest(SQLString) = 0 Then
+        If SELECTCount(SQLString) = 0 Then
             MsgBox(ErrorMessage)
             Call Quitter()
         End If
@@ -380,7 +373,7 @@ Public Class CentralFunctions
         Dim SQLString As String = "SELECT * FROM " & LockTable
         Dim ErrorMessage As String = "The database is currently locked. Please contact David Burnside"
 
-        If QueryTest(SQLString) <> 0 Then
+        If SELECTCount(SQLString) <> 0 Then
             If GetUserName <> "d.burnside" Then
                 MsgBox(ErrorMessage)
                 Call Quitter()
@@ -440,23 +433,6 @@ Public Class CentralFunctions
 
     Public Sub CloseCon()
         If (con.State = ConnectionState.Open) Then con.Close()
-    End Sub
-
-    Private Sub Auditter(DataAdapter As OleDb.OleDbDataAdapter)
-
-        Dim Person As String = GetUserName()
-        Dim Action As String = vbNullString
-
-        If Not IsNothing(CurrentDataAdapter.UpdateCommand) Then
-            Action = "UPDATE"
-        End If
-        If Not IsNothing(CurrentDataAdapter.InsertCommand) Then
-            Action = "INSERT"
-        End If
-        If Not IsNothing(CurrentDataAdapter.DeleteCommand) Then
-            Action = "DELETE"
-        End If
-
     End Sub
 
     Private Sub UpdateActiveUsers(Insert As Boolean)

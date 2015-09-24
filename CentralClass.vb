@@ -14,6 +14,7 @@ Public Class CentralFunctions
     Private ActiveUsersTable As String = Nothing
     Private Contact As String = Nothing
     Private con As OleDb.OleDbConnection
+    Public CmdList As New List(Of OleDb.OleDbCommand)
 
     Public Function SELECTCount(SQLCode As String) As Long
         'Execute a SQL Command and return the number of records
@@ -40,6 +41,68 @@ Public Class CentralFunctions
         SELECTCount = Counter
 
     End Function
+
+    Public Sub AddToMassSQL(SQLCodeOrCmd As Object)
+        'Execute many SQL Commands - No return. Execute submits them all
+
+
+        Dim Cmd As OleDb.OleDbCommand = Nothing
+
+
+        'Create connection & Command
+        If TypeOf (SQLCodeOrCmd) Is String Then
+            Cmd = New OleDb.OleDbCommand(SQLCodeOrCmd, con)
+
+        ElseIf TypeOf (SQLCodeOrCmd) Is OleDb.OleDbCommand Then
+            Cmd = New OleDb.OleDbCommand(SQLCodeOrCmd.CommandText, con)
+        End If
+        CmdList.Add(Cmd)
+
+    End Sub
+
+    Public Sub ExecuteMassSQL()
+
+        Dim ErrorMessage As String = vbNullString
+        Dim Returner As Long = 0
+        Dim trans As OleDb.OleDbTransaction
+        Dim Attempts As Integer = 0
+
+        'Open connection - assign a transaction
+        OpenCon()
+        UpdateActiveUsers(True)
+        trans = con.BeginTransaction(IsolationLevel.ReadCommitted)
+
+
+        Dim i As Integer = 0
+
+
+        Try
+            'Add all to transaction & Execute
+            Do While i < CmdList.Count
+                CmdList(i).Transaction = trans
+                CmdList(i).ExecuteNonQuery()
+                i = i + 1
+            Loop
+
+            'If OK. Commit changes
+            Call TryCommit(trans)
+
+        Catch ex As Exception
+            ErrorMessage = ex.Message
+            Call TryRollBack(trans)
+            Returner = Nothing
+
+        Finally
+            'Close Off & Clean up
+            UpdateActiveUsers(False)
+            CloseCon()
+            CmdList.Clear()
+            trans = Nothing
+            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
+
+        End Try
+
+    End Sub
 
     Public Sub ExecuteSQL(SQLCodeOrCmd As Object) 'Execute a SQL Command - No return
 

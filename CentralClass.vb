@@ -60,10 +60,8 @@ Public Class CentralFunctions
 
     End Sub
 
-    Public Sub ExecuteMassSQL()
+    Public Sub ExecuteMassSQL() ' Executes all commands in CmdList 
 
-        Dim ErrorMessage As String = vbNullString
-        Dim Returner As Long = 0
         Dim trans As OleDb.OleDbTransaction
         Dim Attempts As Integer = 0
 
@@ -88,9 +86,11 @@ Public Class CentralFunctions
             Call TryCommit(trans)
 
         Catch ex As Exception
-            ErrorMessage = ex.Message
             Call TryRollBack(trans)
-            Returner = Nothing
+            UpdateActiveUsers(False)
+            CloseCon()
+            CmdList.Clear()
+            Throw
 
         Finally
             'Close Off & Clean up
@@ -98,7 +98,6 @@ Public Class CentralFunctions
             CloseCon()
             CmdList.Clear()
             trans = Nothing
-            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
 
@@ -106,8 +105,6 @@ Public Class CentralFunctions
 
     Public Sub ExecuteSQL(SQLCodeOrCmd As Object) 'Execute a SQL Command - No return
 
-        Dim ErrorMessage As String = vbNullString
-        Dim Returner As Long = 0
         Dim Cmd As OleDb.OleDbCommand = Nothing
 
         'Create connection & Command
@@ -137,9 +134,10 @@ Public Class CentralFunctions
             Call TryCommit(trans)
 
         Catch ex As Exception
-            ErrorMessage = ex.Message
             Call TryRollBack(trans)
-            Returner = Nothing
+            UpdateActiveUsers(False)
+            CloseCon()
+            Throw
 
         Finally
             'Close Off & Clean up
@@ -147,7 +145,7 @@ Public Class CentralFunctions
             CloseCon()
             Cmd = Nothing
             trans = Nothing
-            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
+
 
         End Try
 
@@ -180,7 +178,7 @@ Public Class CentralFunctions
                 End If
 
             Catch ex2 As Exception
-                MsgBox("Failed to commit changes - " & ex2.Message)
+                Throw
                 Call TryRollBack(Trans)
 
             End Try
@@ -206,7 +204,7 @@ Public Class CentralFunctions
                 Threading.Thread.Sleep(10000)
                 Attempts = Attempts + 1
                 If Attempts = 4 Then
-                    MsgBox("Failed to rollback changes - " & ex.Message)
+                    Throw
                     Exit Sub
                 End If
 
@@ -219,7 +217,6 @@ Public Class CentralFunctions
     Public Sub CreateDataSet(SQLCode As String, BindSource As BindingSource, ctl As Object)
         'Create a new dataset, set a bindining source and object to that binding source
 
-        Dim ErrorMessage As String = vbNullString
 
         Try
             'Open connection
@@ -238,13 +235,13 @@ Public Class CentralFunctions
             ctl.DataSource = BindSource
 
         Catch ex As Exception
-            ErrorMessage = ex.Message
+            CloseCon()
+            Throw
 
         Finally
 
             'Close off & Clean up
             CloseCon()
-            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
 
@@ -313,7 +310,6 @@ Public Class CentralFunctions
 
         'Variable if user wants to save
         Dim Cancel As Boolean = False
-        Dim ErrorMessage As String = vbNullString
 
         'Is there currently a dataset to close?
         If IsNothing(CurrentDataSet) Then
@@ -340,19 +336,16 @@ Public Class CentralFunctions
             End If
 
         Catch ex As Exception
-            ErrorMessage = ex.Message
+            Throw
         Finally
             'Pass back whether clean up happened
             UnloadData = Cancel
-            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
         End Try
 
     End Function
 
     Public Function TempDataTable(SQLCode As String) As DataTable
         'Create a temporary dataset for things such as combo box which arent based on the initial query
-
-        Dim ErrorMessage As String = vbNullString
 
         Try
             'Open connection
@@ -364,13 +357,15 @@ Public Class CentralFunctions
             TempDataAdapter.Fill(TempDataTable)
 
         Catch ex As Exception
-            ErrorMessage = ex.Message
+            CloseCon()
+            Throw
             TempDataTable = Nothing
+
+
         Finally
 
             'Close off & Clean up
             CloseCon()
-            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
 
@@ -381,7 +376,6 @@ Public Class CentralFunctions
         Dim da As New OleDb.OleDbDataAdapter(SQLCode, ConnectString)
         Dim dt As New DataTable
         Dim Output As String = vbNullString
-        Dim ErrorMessage As String = vbNullString
 
         Try
             da.Fill(dt)
@@ -397,13 +391,13 @@ Public Class CentralFunctions
             If Output <> vbNullString Then Output = Left(Output, Len(Output) - 1)
 
         Catch ex As Exception
-            ErrorMessage = ex.Message
+            Throw
 
         Finally
             CreateCSVString = Output
             dt = Nothing
             da = Nothing
-            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
+
         End Try
 
     End Function
@@ -414,7 +408,7 @@ Public Class CentralFunctions
             Call CreateDataSet(CurrentDataAdapter.SelectCommand.CommandText, CurrentBindingSource, DataItem)
             DataItem.Parent.Refresh()
         Catch ex As Exception
-            MsgBox(ex.Message)
+            Throw
         End Try
 
     End Sub

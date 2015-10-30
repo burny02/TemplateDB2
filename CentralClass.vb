@@ -302,7 +302,6 @@ Public Class CentralFunctions
         UpdateActiveUsers(False)
         CloseCon()
         Application.Exit()
-        Environment.Exit(0)
 
     End Sub
 

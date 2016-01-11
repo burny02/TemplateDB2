@@ -15,6 +15,7 @@ Public Class CentralFunctions
     Private Contact As String = Nothing
     Private con As OleDb.OleDbConnection
     Public CmdList As New List(Of OleDb.OleDbCommand)
+    Private CurrentTrans As OleDb.OleDbTransaction = Nothing
 
     Public Function SELECTCount(SQLCode As String) As Long
         'Execute a SQL Command and return the number of records
@@ -45,9 +46,7 @@ Public Class CentralFunctions
     Public Sub AddToMassSQL(SQLCodeOrCmd As Object)
         'Execute many SQL Commands - No return. Execute submits them all
 
-
         Dim Cmd As OleDb.OleDbCommand = Nothing
-
 
         'Create connection & Command
         If TypeOf (SQLCodeOrCmd) Is String Then
@@ -60,44 +59,45 @@ Public Class CentralFunctions
 
     End Sub
 
-    Public Sub ExecuteMassSQL() ' Executes all commands in CmdList 
+    Public Sub ExecuteMassSQL(Optional AddTransactionOnly As Boolean = False)
+        'Executes all commands in CmdList
+        'Option to not commit - For simulatenous transactions
 
-        Dim trans As OleDb.OleDbTransaction
         Dim Attempts As Integer = 0
 
         'Open connection - assign a transaction
         OpenCon()
-        UpdateActiveUsers(True)
-        trans = con.BeginTransaction(IsolationLevel.ReadCommitted)
 
+
+        If CurrentTrans Is Nothing Then CurrentTrans = con.BeginTransaction(IsolationLevel.ReadCommitted)
 
         Dim i As Integer = 0
-
 
         Try
             'Add all to transaction & Execute
             Do While i < CmdList.Count
-                CmdList(i).Transaction = trans
+                CmdList(i).Transaction = CurrentTrans
                 CmdList(i).ExecuteNonQuery()
                 i = i + 1
             Loop
 
-            'If OK. Commit changes
-            Call TryCommit(trans)
+            'If wanted, commit changes
+            If AddTransactionOnly = False Then TryCommit()
 
         Catch ex As Exception
-            Call TryRollBack(trans)
-            UpdateActiveUsers(False)
+            Call TryRollBack()
             CloseCon()
             CmdList.Clear()
             Throw
 
         Finally
             'Close Off & Clean up
-            UpdateActiveUsers(False)
-            CloseCon()
+            If AddTransactionOnly = False Then
+                CloseCon()
+                CurrentTrans = Nothing
+            End If
             CmdList.Clear()
-            trans = Nothing
+
 
         End Try
 
@@ -114,44 +114,40 @@ Public Class CentralFunctions
             Cmd = New OleDb.OleDbCommand(SQLCodeOrCmd.CommandText, con)
         End If
 
-        Dim trans As OleDb.OleDbTransaction
         Dim Attempts As Integer = 0
 
         'Open connection - assign a transaction
         OpenCon()
-        UpdateActiveUsers(True)
-        trans = con.BeginTransaction(IsolationLevel.ReadCommitted)
-        Cmd.Transaction = trans
+        If CurrentTrans Is Nothing Then CurrentTrans = con.BeginTransaction(IsolationLevel.ReadCommitted)
+        Cmd.Transaction = CurrentTrans
 
 
         Try
 
             'Set the action as a transaction
-            Cmd.Transaction = trans
+            Cmd.Transaction = CurrentTrans
             'Execute SQL Command
             Cmd.ExecuteNonQuery()
             'If OK. Commit changes
-            Call TryCommit(trans)
+            Call TryCommit()
 
         Catch ex As Exception
-            Call TryRollBack(trans)
-            UpdateActiveUsers(False)
+            Call TryRollBack()
             CloseCon()
             Throw
 
         Finally
             'Close Off & Clean up
-            UpdateActiveUsers(False)
             CloseCon()
             Cmd = Nothing
-            trans = Nothing
+            CurrentTrans = Nothing
 
 
         End Try
 
     End Sub
 
-    Private Sub TryCommit(Trans As OleDb.OleDbTransaction)
+    Private Sub TryCommit()
 
         Dim Attempts As Integer = 0
 
@@ -159,27 +155,26 @@ Public Class CentralFunctions
         Do While Attempts <= 3
             Try
                 OpenCon()
-                Trans.Commit()
+                CurrentTrans.Commit()
                 Exit Sub
 
             Catch ex As OleDb.OleDbException
                 Threading.Thread.Sleep(10000)
                 Attempts = Attempts + 1
-                MsgBox(Attempts)
                 If Attempts = 4 Then
                     If MsgBox("A record appears to be locked by another user" _
                               & vbNewLine & vbNewLine & "Do you want to try again?", vbYes) = vbYes Then
                         'Back to start       
                         Attempts = 0
                     Else
-                        Call TryRollBack(Trans)
+                        Call TryRollBack()
                     End If
 
                 End If
 
             Catch ex2 As Exception
                 Throw
-                Call TryRollBack(Trans)
+                Call TryRollBack()
 
             End Try
 
@@ -187,7 +182,7 @@ Public Class CentralFunctions
 
     End Sub
 
-    Private Sub TryRollBack(Trans As OleDb.OleDbTransaction)
+    Private Sub TryRollBack()
 
         'Loop and try to RollBack a transaction with delay
         Dim Attempts As Integer = 0
@@ -197,7 +192,7 @@ Public Class CentralFunctions
 
             Try
                 OpenCon()
-                Trans.Rollback()
+                CurrentTrans.Rollback()
                 Exit Sub
 
             Catch ex As Exception
@@ -260,21 +255,77 @@ Public Class CentralFunctions
 
         'Open Connection & Set transaction
         OpenCon()
-        UpdateActiveUsers(True)
-        Dim trans As OleDb.OleDbTransaction
-        trans = con.BeginTransaction(IsolationLevel.ReadCommitted)
+        If CurrentTrans Is Nothing Then CurrentTrans = con.BeginTransaction(IsolationLevel.ReadCommitted)
 
-        If Not IsNothing(CurrentDataAdapter.UpdateCommand) Then CurrentDataAdapter.UpdateCommand.Transaction = trans
-        If Not IsNothing(CurrentDataAdapter.InsertCommand) Then CurrentDataAdapter.InsertCommand.Transaction = trans
-        If Not IsNothing(CurrentDataAdapter.DeleteCommand) Then CurrentDataAdapter.DeleteCommand.Transaction = trans
+        If Not IsNothing(CurrentDataAdapter.UpdateCommand) Then CurrentDataAdapter.UpdateCommand.Transaction = CurrentTrans
+        If Not IsNothing(CurrentDataAdapter.InsertCommand) Then CurrentDataAdapter.InsertCommand.Transaction = CurrentTrans
+        If Not IsNothing(CurrentDataAdapter.DeleteCommand) Then CurrentDataAdapter.DeleteCommand.Transaction = CurrentTrans
 
         Try
 
             CurrentBindingSource.EndEdit()
 
+            'AUDIT
+            Dim Operation As String = vbNullString
+            Dim Table As String = vbNullString
+            Dim Person As String = GetUserName()
+            Dim AuditValues As String = vbNullString
+
+
+            For Each row As DataRow In CurrentDataSet.Tables(0).Rows
+
+                If row.RowState <> DataRowState.Deleted _
+                    And row.RowState <> DataRowState.Detached _
+                    And row.RowState <> DataRowState.Unchanged Then
+
+                    For Each col As DataColumn In CurrentDataSet.Tables(0).Columns
+                        AuditValues = AuditValues & Replace(col.ColumnName.ToString, "'", "") & "="
+                        AuditValues = AuditValues & Replace(row.Item(col).ToString, "'", "") & ","
+                    Next
+
+                End If
+
+                If row.RowState = DataRowState.Added Then
+                    Operation = "INSERT"
+                    Dim InsertText = Replace(CurrentDataAdapter.DeleteCommand.CommandText.ToUpper, "INSERT INTO", "")
+                    Dim FirstLocation As Long = InStr(InsertText, "SELECT")
+                    If FirstLocation = 0 Then
+                        FirstLocation = InStr(InsertText, "VALUES")
+                        If FirstLocation > InStr(InsertText, "(") Then FirstLocation = InStr(InsertText, "(")
+                    End If
+                    Table = Trim(Left(InsertText, FirstLocation - 1))
+
+
+                ElseIf row.RowState = DataRowState.Modified Then
+                    Operation = "UPDATE"
+                    Dim UpdateText = Replace(CurrentDataAdapter.UpdateCommand.CommandText.ToUpper, "UPDATE", "")
+                    Dim SetLocation As Long = InStr(UpdateText, "SET")
+                    Table = Trim(Left(UpdateText, SetLocation - 1))
+
+
+                ElseIf row.RowState = DataRowState.Deleted Then
+                    Operation = "DELETE"
+                    Dim DeleteText = Replace(CurrentDataAdapter.DeleteCommand.CommandText.ToUpper, "DELETE FROM", "")
+                    Dim WhereLocation As Long = InStr(DeleteText, "WHERE")
+                    Table = Trim(Left(DeleteText, WhereLocation - 1))
+
+
+                End If
+
+                Dim CombineInsert As String = Left("'" & Person & "','" & Operation &
+                    "','" & Table & "','" & AuditValues & "'", 255)
+                AddToMassSQL("INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & CombineInsert & ")")
+                AuditValues = vbNullString
+
+            Next
+
+            'Add to transaction only
+            ExecuteMassSQL(True)
+
             'Use dataadapter to update the backend (Commands already set)
             CurrentDataAdapter.Update(CurrentDataSet)
-            Call TryCommit(trans)
+            Call TryCommit()
+
             If DisplayMessage = True Then MsgBox("Table Updated")
             'Remove any error messages & accept changes
             CurrentDataSet.AcceptChanges()
@@ -282,13 +333,12 @@ Public Class CentralFunctions
 
         Catch ex As Exception
             ErrorMessage = ex.Message
-            Call TryRollBack(trans)
+            Call TryRollBack()
 
         Finally
             'Close off & clean up
-            UpdateActiveUsers(False)
             CloseCon()
-            trans = Nothing
+            CurrentTrans = Nothing
             If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
 
         End Try
@@ -299,7 +349,6 @@ Public Class CentralFunctions
 
         On Error Resume Next
 
-        UpdateActiveUsers(False)
         CloseCon()
         Application.Exit()
 
@@ -323,7 +372,7 @@ Public Class CentralFunctions
             If CurrentDataSet.HasChanges() Then
 
                 'Ask user if they want to proceed and lose data?
-                If (MsgBox("Changes to data will be lost unless saved first. Do you wish to discard changes?", vbYesNo) = vbNo) Then Cancel = True
+                If (MsgBox("Changes To data will be lost unless saved first. Do you wish To discard changes?", vbYesNo) = vbNo) Then Cancel = True
 
             End If
 
@@ -383,7 +432,7 @@ Public Class CentralFunctions
             For Each row As DataRow In dt.Rows
 
                 If Not IsNothing(row.Item(0)) And Not IsDBNull(row.Item(0)) Then
-                    Output = Output & row.Item(0).ToString & ","
+                    Output = Output & row.Item(0).ToString & ", "
                 End If
 
             Next
@@ -416,7 +465,7 @@ Public Class CentralFunctions
     Public Sub LoginCheck()
 
         Dim SQLString As String = "SELECT * FROM " & UserTable & " WHERE " & UserField & "='" & GetUserName() & "'"
-        Dim ErrorMessage As String = "You do not have permission to use this database. Please contact David Burnside or " & Contact
+                Dim ErrorMessage As String = "You do not have permission to use this database. Please contact David Burnside or " & Contact
 
         If SELECTCount(SQLString) = 0 Then
             MsgBox(ErrorMessage)
@@ -492,21 +541,6 @@ Public Class CentralFunctions
         If (con.State = ConnectionState.Open) Then con.Close()
     End Sub
 
-    Private Sub UpdateActiveUsers(Insert As Boolean)
-
-        Dim cmd As New OleDb.OleDbCommand("DELETE * FROM " & ActiveUsersTable & " WHERE User='" & GetUserName & "'", con)
-        Dim cmd2 As New OleDb.OleDbCommand("INSERT INTO " & ActiveUsersTable & " VALUES ('" & GetUserName & "')", con)
-
-        OpenCon()
-        If Insert = True Then
-            cmd.ExecuteNonQuery()
-            cmd2.ExecuteNonQuery()
-        Else
-            cmd.ExecuteNonQuery()
-        End If
-
-    End Sub
-
     Public Function SQLDate(varDate As Object) As String
 
         If IsDate(varDate) Then
@@ -522,4 +556,30 @@ Public Class CentralFunctions
         'ALWAYS SQLCOMMAND date as a string like #1/1/2000# - The # tells it that is it american format
     End Function
 
+
+    Private Sub AuditSQLCode(SQLCode As String)
+
+        Dim Person As String = GetUserName()
+        Dim Action As String = Left(SQLCode, 6)
+        Dim Table As String = vbNullString
+        Dim Values As String = vbNullString
+
+
+        Select Case Action
+
+            Case "SELECT"
+                Exit Sub
+
+            Case "INSERT"
+
+
+            Case "UPDATE"
+
+
+            Case "DELETE"
+
+
+        End Select
+
+    End Sub
 End Class

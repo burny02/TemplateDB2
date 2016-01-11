@@ -2,6 +2,28 @@
     Inherits UniversalEventsClass
     Public DataItemCollection As New Collection
 
+    Public Sub RemoveAllDataItem(ctl As Control)
+
+        For Each Control In ctl.Controls
+
+            If (TypeOf ctl Is Form) Then UnSetForm(ctl)
+
+            If (TypeOf Control Is ComboBox) Then
+                DataItemCollection.Remove(Control.Name)
+                SetComboBox(Control)
+            ElseIf (TypeOf Control Is DataGridView) Then
+                DataItemCollection.Remove(Control.Name)
+                SetDataGrid(Control)
+            ElseIf (TypeOf Control Is Button) Then
+                DataItemCollection.Remove(Control.Name)
+            End If
+
+            If Control.HasChildren Then
+                Call RemoveAllDataItem(Control)
+            End If
+        Next
+
+    End Sub
     Public Sub AddAllDataItem(ctl As Control)
 
         For Each Control In ctl.Controls
@@ -55,6 +77,12 @@
     Private Sub SetForm(ctl As Form)
 
         AddHandler ctl.FormClosing, AddressOf FormClosing
+
+    End Sub
+
+    Private Sub UnSetForm(ctl As Form)
+
+        RemoveHandler ctl.FormClosing, AddressOf FormClosing
 
     End Sub
 

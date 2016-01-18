@@ -31,7 +31,7 @@ Public Class CentralFunctions
             Counter = dt.Rows.Count
 
         Catch ex As Exception
-            MsgBox(ex.Message)
+            DefaultError(ex)
 
         Finally
             'Close Off & Clean up
@@ -87,7 +87,6 @@ Public Class CentralFunctions
         Catch ex As Exception
             Call TryRollBack()
             CloseCon()
-            CmdList.Clear()
             Throw
 
         Finally
@@ -245,7 +244,7 @@ Public Class CentralFunctions
     Public Sub UpdateBackend(ctl As Object, Optional DisplayMessage As Boolean = True)
         'Saving function to update access backend
 
-        Dim ErrorMessage As String = vbNullString
+        Dim ErrorMessage As Exception = Nothing
 
         'Is the data dirty / has errors that have auto-undone
         If CurrentDataSet.HasChanges() = False Then
@@ -270,50 +269,38 @@ Public Class CentralFunctions
             Dim Table As String = vbNullString
             Dim Person As String = GetUserName()
             Dim AuditValues As String = vbNullString
+            Dim Version As System.Data.DataRowVersion
 
 
             For Each row As DataRow In CurrentDataSet.Tables(0).Rows
 
-                If row.RowState <> DataRowState.Deleted _
-                    And row.RowState <> DataRowState.Detached _
-                    And row.RowState <> DataRowState.Unchanged Then
-
-                    For Each col As DataColumn In CurrentDataSet.Tables(0).Columns
-                        AuditValues = AuditValues & Replace(col.ColumnName.ToString, "'", "") & "="
-                        AuditValues = AuditValues & Replace(row.Item(col).ToString, "'", "") & ","
-                    Next
-
-                End If
+                If row.RowState = DataRowState.Detached _
+                    Or row.RowState = DataRowState.Unchanged Then Continue For
 
                 If row.RowState = DataRowState.Added Then
                     Operation = "INSERT"
-                    Dim InsertText = Replace(CurrentDataAdapter.DeleteCommand.CommandText.ToUpper, "INSERT INTO", "")
-                    Dim FirstLocation As Long = InStr(InsertText, "SELECT")
-                    If FirstLocation = 0 Then
-                        FirstLocation = InStr(InsertText, "VALUES")
-                        If FirstLocation > InStr(InsertText, "(") Then FirstLocation = InStr(InsertText, "(")
-                    End If
-                    Table = Trim(Left(InsertText, FirstLocation - 1))
-
+                    Call GetSQLAudit(CurrentDataAdapter.InsertCommand.CommandText.ToUpper,, Table)
+                    Version = DataRowVersion.Current
 
                 ElseIf row.RowState = DataRowState.Modified Then
                     Operation = "UPDATE"
-                    Dim UpdateText = Replace(CurrentDataAdapter.UpdateCommand.CommandText.ToUpper, "UPDATE", "")
-                    Dim SetLocation As Long = InStr(UpdateText, "SET")
-                    Table = Trim(Left(UpdateText, SetLocation - 1))
-
+                    Call GetSQLAudit(CurrentDataAdapter.UpdateCommand.CommandText.ToUpper,, Table)
+                    Version = DataRowVersion.Current
 
                 ElseIf row.RowState = DataRowState.Deleted Then
                     Operation = "DELETE"
-                    Dim DeleteText = Replace(CurrentDataAdapter.DeleteCommand.CommandText.ToUpper, "DELETE FROM", "")
-                    Dim WhereLocation As Long = InStr(DeleteText, "WHERE")
-                    Table = Trim(Left(DeleteText, WhereLocation - 1))
-
+                    Call GetSQLAudit(CurrentDataAdapter.DeleteCommand.CommandText.ToUpper,, Table)
+                    Version = DataRowVersion.Original
 
                 End If
 
-                Dim CombineInsert As String = Left("'" & Person & "','" & Operation &
-                    "','" & Table & "','" & AuditValues & "'", 255)
+                For Each col As DataColumn In CurrentDataSet.Tables(0).Columns
+                    AuditValues = AuditValues & Replace(col.ColumnName.ToString, "'", "") & "="
+                    AuditValues = AuditValues & Replace(row.Item(col, Version).ToString, "'", "") & ","
+                Next
+
+                Dim CombineInsert As String = "'" & Person & "','" & Operation &
+                    "','" & Table & "','" & Left(AuditValues, 255) & "'"
                 AddToMassSQL("INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & CombineInsert & ")")
                 AuditValues = vbNullString
 
@@ -321,7 +308,6 @@ Public Class CentralFunctions
 
             'Add to transaction only
             ExecuteMassSQL(True)
-
             'Use dataadapter to update the backend (Commands already set)
             CurrentDataAdapter.Update(CurrentDataSet)
             Call TryCommit()
@@ -332,14 +318,14 @@ Public Class CentralFunctions
             Call Refresher(ctl)
 
         Catch ex As Exception
-            ErrorMessage = ex.Message
+            ErrorMessage = ex
             Call TryRollBack()
 
         Finally
             'Close off & clean up
             CloseCon()
             CurrentTrans = Nothing
-            If ErrorMessage <> vbNullString Then MsgBox(ErrorMessage)
+            If Not ErrorMessage Is Nothing Then DefaultError(ErrorMessage)
 
         End Try
 
@@ -557,29 +543,68 @@ Public Class CentralFunctions
     End Function
 
 
-    Private Sub AuditSQLCode(SQLCode As String)
+    Private Sub GetSQLAudit(ByVal SQLCode As String,
+                                 Optional ByRef ActionVariable As String = vbNullString,
+                                 Optional ByRef TableVariable As String = vbNullString,
+                                 Optional ByRef PersonVariable As String = vbNullString,
+                                 Optional ByRef ValuesVariable As String = vbNullString)
 
-        Dim Person As String = GetUserName()
-        Dim Action As String = Left(SQLCode, 6)
-        Dim Table As String = vbNullString
-        Dim Values As String = vbNullString
+        PersonVariable = GetUserName()
+        ActionVariable = Left(SQLCode, 6)
 
-
-        Select Case Action
+        'Get Table info
+        Select Case ActionVariable
 
             Case "SELECT"
                 Exit Sub
 
             Case "INSERT"
-
+                SQLCode = Replace(SQLCode.ToUpper, "INSERT INTO", "")
+                Dim FirstLocation As Long = InStr(SQLCode, "SELECT")
+                If FirstLocation = 0 Then
+                    FirstLocation = InStr(SQLCode, "VALUES")
+                    If FirstLocation > InStr(SQLCode, "(") Then FirstLocation = InStr(SQLCode, "(")
+                End If
+                TableVariable = Trim(Left(SQLCode, FirstLocation - 1))
 
             Case "UPDATE"
-
+                SQLCode = Replace(SQLCode.ToUpper, "UPDATE", "")
+                Dim SetLocation As Long = InStr(SQLCode, "SET")
+                TableVariable = Trim(Left(SQLCode, SetLocation - 1))
 
             Case "DELETE"
-
+                SQLCode = Replace(SQLCode.ToUpper, "DELETE FROM", "")
+                Dim WhereLocation As Long = InStr(SQLCode, "WHERE")
+                TableVariable = Trim(Left(SQLCode, WhereLocation - 1))
 
         End Select
 
+        'Get Values info
+
+
+
+
     End Sub
+
+
+    Public Sub DefaultError(ex As Exception)
+
+        Dim st As StackTrace = New StackTrace(ex, True)
+
+
+        MsgBox("An application error has occured -" _
+            & vbNewLine _
+            & vbNewLine _
+            & "Method: " & st.GetFrame(st.FrameCount - 1).GetMethod().Name.ToString _
+            & vbNewLine _
+            & "Line: " & st.GetFrame(st.FrameCount - 1).GetFileLineNumber().ToString _
+            & vbNewLine _
+            & vbNewLine _
+            & "Error: " & ex.Message, , "Application Error")
+
+
+    End Sub
+
+
+
 End Class

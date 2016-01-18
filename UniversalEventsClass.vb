@@ -6,12 +6,17 @@
     End Sub
 
     Protected Sub DataGridViewDataError(sender As Object, e As DataGridViewDataErrorEventArgs)
-        e.Cancel = False
-        Call ErrorHandler(sender, e)
+        Try
+            e.Cancel = False
+            Call ErrorHandler(sender, e)
+        Catch ex As Exception
+            Call DefaultError(ex)
+        End Try
     End Sub
 
     Protected Sub GridComboEnter(sender As Object, e As DataGridViewCellEventArgs)
 
+        If Not e.RowIndex > 0 Then Exit Sub
         On Error Resume Next
         Dim dgv As DataGridView = CType(sender, DataGridView)
 
@@ -27,6 +32,8 @@
 
     Protected Sub ErrorHandler(sender As Object, e As Object)
 
+        If Not e.RowIndex > 0 Then Exit Sub
+
         Dim Obj As Object
 
         Try
@@ -35,7 +42,7 @@
                 Obj.Rows(e.RowIndex).Cells(e.ColumnIndex).ErrorText = e.exception.message
             End If
         Catch ex As Exception
-            MsgBox(ex.Message)
+            DefaultError(ex)
         End Try
 
     End Sub

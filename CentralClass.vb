@@ -43,7 +43,7 @@ Public Class CentralFunctions
 
     End Function
 
-    Public Sub AddToMassSQL(SQLCodeOrCmd As Object)
+    Public Sub AddToMassSQL(SQLCodeOrCmd As Object, Optional Audit As Boolean = True)
         'Execute many SQL Commands - No return. Execute submits them all
 
         Dim Cmd As OleDb.OleDbCommand = Nothing
@@ -56,6 +56,19 @@ Public Class CentralFunctions
             Cmd = New OleDb.OleDbCommand(SQLCodeOrCmd.CommandText, con)
         End If
         CmdList.Add(Cmd)
+
+        If Audit = True Then
+            Dim AuditPerson As String = vbNullString
+            Dim AuditTable As String = vbNullString
+            Dim AuditValues As String = vbNullString
+            Dim AuditAction As String = vbNullString
+
+            GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
+            Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
+                    "','" & AuditTable & "','" & AuditValues & "'"
+            AuditSQLCode = "INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
+            Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
+        End If
 
     End Sub
 
@@ -114,6 +127,10 @@ Public Class CentralFunctions
         End If
 
         Dim Attempts As Integer = 0
+        Dim AuditPerson As String = vbNullString
+        Dim AuditTable As String = vbNullString
+        Dim AuditValues As String = vbNullString
+        Dim AuditAction As String = vbNullString
 
         'Open connection - assign a transaction
         OpenCon()
@@ -122,6 +139,14 @@ Public Class CentralFunctions
 
 
         Try
+            'Audit
+            GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
+            Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
+                    "','" & AuditTable & "','" & AuditValues & "'"
+            AuditSQLCode = "INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
+            Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
+            AuditCmd.Transaction = CurrentTrans
+            AuditCmd.ExecuteNonQuery()
 
             'Set the action as a transaction
             Cmd.Transaction = CurrentTrans
@@ -301,7 +326,7 @@ Public Class CentralFunctions
 
                 Dim CombineInsert As String = "'" & Person & "','" & Operation &
                     "','" & Table & "','" & Left(AuditValues, 255) & "'"
-                AddToMassSQL("INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & CombineInsert & ")")
+                AddToMassSQL("INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & CombineInsert & ")", False)
                 AuditValues = vbNullString
 
             Next
@@ -580,8 +605,8 @@ Public Class CentralFunctions
         End Select
 
         'Get Values info
-
-
+        SQLCode = Replace(SQLCode, TableVariable, "")
+        ValuesVariable = Left(SQLCode, 255)
 
 
     End Sub

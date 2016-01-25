@@ -65,9 +65,10 @@ Public Class CentralFunctions
 
             GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
-                    "','" & AuditTable & "','" & AuditValues & "'"
+                    "','" & AuditTable & "','" & Left(AuditValues, 254) & "'"
             AuditSQLCode = "INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
             Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
+            CmdList.Add(AuditCmd)
         End If
 
     End Sub
@@ -142,7 +143,7 @@ Public Class CentralFunctions
             'Audit
             GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
-                    "','" & AuditTable & "','" & AuditValues & "'"
+                    "','" & AuditTable & "','" & Left(AuditValues, 254) & "'"
             AuditSQLCode = "INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
             Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
             AuditCmd.Transaction = CurrentTrans
@@ -274,6 +275,7 @@ Public Class CentralFunctions
         'Is the data dirty / has errors that have auto-undone
         If CurrentDataSet.HasChanges() = False Then
             If DisplayMessage = True Then MsgBox("Errors present/No changes to upload")
+            Call Refresher(ctl)
             Exit Sub
         End If
 
@@ -574,6 +576,8 @@ Public Class CentralFunctions
                                  Optional ByRef PersonVariable As String = vbNullString,
                                  Optional ByRef ValuesVariable As String = vbNullString)
 
+        SQLCode = Replace(SQLCode, "'", "")
+
         PersonVariable = GetUserName()
         ActionVariable = Left(SQLCode, 6)
 
@@ -585,11 +589,9 @@ Public Class CentralFunctions
 
             Case "INSERT"
                 SQLCode = Replace(SQLCode.ToUpper, "INSERT INTO", "")
-                Dim FirstLocation As Long = InStr(SQLCode, "SELECT")
-                If FirstLocation = 0 Then
-                    FirstLocation = InStr(SQLCode, "VALUES")
-                    If FirstLocation > InStr(SQLCode, "(") Then FirstLocation = InStr(SQLCode, "(")
-                End If
+                SQLCode = Trim(SQLCode)
+                Dim FirstLocation As Long = InStr(SQLCode, " ")
+                If FirstLocation > InStr(SQLCode, "(") Then FirstLocation = InStr(SQLCode, "(")
                 TableVariable = Trim(Left(SQLCode, FirstLocation - 1))
 
             Case "UPDATE"
@@ -605,8 +607,8 @@ Public Class CentralFunctions
         End Select
 
         'Get Values info
-        SQLCode = Replace(SQLCode, TableVariable, "")
-        ValuesVariable = Left(SQLCode, 255)
+        SQLCode = Trim(Replace(SQLCode, TableVariable, ""))
+        ValuesVariable = SQLCode
 
 
     End Sub

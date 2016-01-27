@@ -1,8 +1,11 @@
-﻿Imports System.Data
+﻿Option Explicit On
+Imports System.Data
 Imports System.Data.OleDb.OleDbConnection
+
+
 Public Class CentralFunctions
     Declare Function GetUserName Lib "advapi32.dll" Alias _
-        "GetUserNameA" (ByVal lpBuffer As String, _
+        "GetUserNameA" (ByVal lpBuffer As String,
         ByRef nSize As Integer) As Integer
     Public CurrentDataSet As DataSet = Nothing
     Public CurrentDataAdapter As OleDb.OleDbDataAdapter = Nothing
@@ -16,6 +19,7 @@ Public Class CentralFunctions
     Private con As OleDb.OleDbConnection
     Public CmdList As New List(Of OleDb.OleDbCommand)
     Private CurrentTrans As OleDb.OleDbTransaction = Nothing
+    Public DataItemCollection As New Collection
 
     Public Function SELECTCount(SQLCode As String) As Long
         'Execute a SQL Command and return the number of records
@@ -478,7 +482,7 @@ Public Class CentralFunctions
     Public Sub LoginCheck()
 
         Dim SQLString As String = "SELECT * FROM " & UserTable & " WHERE " & UserField & "='" & GetUserName() & "'"
-                Dim ErrorMessage As String = "You do not have permission to use this database. Please contact David Burnside or " & Contact
+        Dim ErrorMessage As String = "You do not have permission to use this database. Please contact David Burnside or " & Contact
 
         If SELECTCount(SQLString) = 0 Then
             MsgBox(ErrorMessage)
@@ -493,7 +497,7 @@ Public Class CentralFunctions
         Dim ErrorMessage As String = "The database is currently locked. Please contact David Burnside"
 
         If SELECTCount(SQLString) <> 0 Then
-            If GetUserName <> "d.burnside" Then
+            If GetUserName() <> "d.burnside" Then
                 MsgBox(ErrorMessage)
                 Call Quitter()
             Else
@@ -514,11 +518,11 @@ Public Class CentralFunctions
 
     End Function
 
-    Public Sub SetPrivate(UserTbl As String, _
-                          UserFld As String, _
-                          LockTbl As String, _
-                          ContactPerson As String, _
-                          ConnectionString As String, _
+    Public Sub SetPrivate(UserTbl As String,
+                          UserFld As String,
+                          LockTbl As String,
+                          ContactPerson As String,
+                          ConnectionString As String,
                           ActiveUsersTbl As String)
 
         UserTable = UserTbl
@@ -569,7 +573,6 @@ Public Class CentralFunctions
         'ALWAYS SQLCOMMAND date as a string like #1/1/2000# - The # tells it that is it american format
     End Function
 
-
     Private Sub GetSQLAudit(ByVal SQLCode As String,
                                  Optional ByRef ActionVariable As String = vbNullString,
                                  Optional ByRef TableVariable As String = vbNullString,
@@ -613,7 +616,6 @@ Public Class CentralFunctions
 
     End Sub
 
-
     Public Sub DefaultError(ex As Exception)
 
         Dim st As StackTrace = New StackTrace(ex, True)
@@ -632,6 +634,169 @@ Public Class CentralFunctions
 
     End Sub
 
+    Protected Sub ComboKeyDown(sender As Object, e As KeyEventArgs)
+        e.SuppressKeyPress = True
+    End Sub
 
+    Protected Sub DataGridViewDataError(sender As Object, e As DataGridViewDataErrorEventArgs)
+        Try
+            e.Cancel = False
+            Call ErrorHandler(sender, e)
+        Catch ex As Exception
+            Call DefaultError(ex)
+        End Try
+    End Sub
+
+    Protected Sub GridComboEnter(sender As Object, e As DataGridViewCellEventArgs)
+
+        If Not e.RowIndex > 0 Then Exit Sub
+        On Error Resume Next
+        Dim dgv As DataGridView = CType(sender, DataGridView)
+
+        If dgv(e.ColumnIndex, e.RowIndex).EditType.ToString() = "System.Windows.Forms.DataGridViewComboBoxEditingControl" Then
+            SendKeys.Send("{F4}")
+        End If
+    End Sub
+
+    Protected Sub FormClosing(sender As Object, e As FormClosingEventArgs)
+        If UnloadData() = True Then e.Cancel = True
+        Call Quitter()
+    End Sub
+
+    Protected Sub ErrorHandler(sender As Object, e As Object)
+
+        If Not e.RowIndex > 0 Then Exit Sub
+
+        Dim Obj As Object
+
+        Try
+            If TypeOf (sender) Is DataGridView Then
+                Obj = CType(sender, DataGridView)
+                Obj.Rows(e.RowIndex).Cells(e.ColumnIndex).ErrorText = e.exception.message
+            End If
+        Catch ex As Exception
+            DefaultError(ex)
+        End Try
+
+    End Sub
+
+    Public Sub SetupFilterCombo(Ctl As ComboBox,
+                                CSV_1_Value_2_Display As String,
+                                Optional DefaultEmpty As Boolean = True)
+
+        Try
+
+            Dim StringArray As String() = CSV_1_Value_2_Display.Split(",")
+            If StringArray.Count = 1 Then Throw New ArgumentException("Only single arguement entered for SetupFilterCombo")
+
+            Ctl.ValueMember = StringArray(0).ToString
+            Ctl.DisplayMember = StringArray(1).ToString
+
+            AddHandler Ctl.SelectionChangeCommitted, AddressOf FilterCombo
+            AddHandler Ctl.Enter, AddressOf RefreshCombo
+
+            If DefaultEmpty <> True Then RefreshCombo(Ctl, Ctl, DefaultEmpty)
+
+        Catch ex As Exception
+            DefaultError(ex)
+        End Try
+
+    End Sub
+
+    Protected Sub RefreshCombo(ctl As ComboBox, e As Object, Optional DefaultEmpty As Boolean = True)
+
+        Dim CurrentChoice As String = ctl.SelectedValue
+
+        Dim Dt As DataTable
+
+        Dim View As DataView = New DataView(CurrentDataSet.Tables(0),
+        ctl.ValueMember & "<>'' AND " & ctl.DisplayMember & "<>''",
+                                            "", DataViewRowState.CurrentRows)
+
+        If ctl.ValueMember = ctl.DisplayMember Then
+            Dt = View.ToTable(True, ctl.ValueMember.ToString)
+        Else
+            Dt = View.ToTable(True, ctl.ValueMember, ctl.DisplayMember)
+        End If
+
+        Dim DtRow As DataRow = Dt.NewRow
+        DtRow(ctl.ValueMember) = ""
+        If ctl.ValueMember.ToString <> ctl.DisplayMember Then DtRow(ctl.DisplayMember) = ""
+        Dt.Rows.Add(DtRow)
+
+
+        Dim dataView As New DataView(Dt)
+        dataView.Sort = ctl.DisplayMember & " ASC"
+        Dim Dt2 As DataTable = dataView.ToTable()
+        Dt = Nothing
+        View = Nothing
+
+        ctl.DataSource = Dt2
+
+        If DefaultEmpty = False Then
+            ctl.SelectedValue = Dt2.Rows(1).Item(0)
+            FilterCombo(ctl, New EventArgs)
+        End If
+
+        If CurrentChoice <> "" Then ctl.SelectedValue = CurrentChoice
+
+    End Sub
+
+    Protected Sub FilterCombo(sender As ComboBox, e As EventArgs)
+
+        Dim CtlValue As String = ""
+
+        If IsNumeric(sender.SelectedValue) = True Then
+            CtlValue = sender.SelectedValue
+        Else
+            If sender.SelectedValue <> "" Then CtlValue = "'" & sender.SelectedValue & "'"
+        End If
+
+        Dim FilterString As String = vbNullString
+        Dim RowFilter As String = CurrentDataSet.Tables(0).DefaultView.RowFilter
+        Dim PrevLoc As Long = InStr(RowFilter, sender.ValueMember & "=")
+        Dim ANDLoc As Long
+        Dim ReplaceString As String = ""
+
+
+        If PrevLoc <> 0 Then
+            ANDLoc = InStr(PrevLoc, RowFilter, "AND", 0)
+            If ANDLoc = 0 Then ANDLoc = Len(RowFilter) + 1
+            ANDLoc = ANDLoc - PrevLoc
+            ReplaceString = Mid(RowFilter, PrevLoc, ANDLoc)
+            RowFilter = Replace(RowFilter, ReplaceString, "")
+        End If
+
+
+        RowFilter = Trim(RowFilter)
+        If InStr(RowFilter, "AND AND") <> 0 Then RowFilter = Replace(RowFilter, "AND AND", "AND")
+        If InStr(RowFilter, "ANDAND") <> 0 Then RowFilter = Replace(RowFilter, "ANDAND", "AND")
+        If InStr(RowFilter, "  ") <> 0 Then RowFilter = Replace(RowFilter, "  ", " ")
+        If Left(RowFilter, 3) = "AND" Then RowFilter = Mid(RowFilter, 4)
+        If RowFilter.Length > 3 Then If RowFilter.Substring(RowFilter.Length - 3) = "AND" Then RowFilter = Left(RowFilter, RowFilter.Length - 3)
+        RowFilter = Trim(RowFilter)
+
+        If CtlValue <> "" And Len(RowFilter) <> 0 Then FilterString = " AND "
+
+        If CtlValue <> "" Then FilterString = FilterString & sender.ValueMember & "=" & CtlValue
+
+        FilterString = RowFilter & FilterString
+
+        CurrentDataSet.Tables(0).DefaultView.RowFilter = FilterString
+
+
+    End Sub
+
+    Public Sub ResetCollection()
+
+        For Each control In DataItemCollection
+            If (TypeOf control Is DataGridView) Then
+                control.Columns.Clear()
+                control.DataSource = Nothing
+            End If
+
+        Next
+
+    End Sub
 
 End Class

@@ -1,6 +1,5 @@
 ﻿Public Class OverClass
-    Inherits UniversalEventsClass
-    Public DataItemCollection As New Collection
+    Inherits CentralFunctions
 
     Public Sub RemoveAllDataItem(ctl As Control)
 
@@ -45,18 +44,6 @@
             If Control.HasChildren Then
                 Call AddAllDataItem(Control)
             End If
-        Next
-
-    End Sub
-
-    Public Sub ResetCollection()
-
-        For Each control In DataItemCollection
-            If (TypeOf control Is DataGridView) Then
-                control.Columns.Clear()
-                control.DataSource = Nothing
-            End If
-
         Next
 
     End Sub

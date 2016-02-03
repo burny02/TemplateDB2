@@ -14,7 +14,7 @@ Public Class CentralFunctions
     Private UserTable As String = Nothing
     Private UserField As String = Nothing
     Private LockTable As String = Nothing
-    Private ActiveUsersTable As String = Nothing
+    Private ReadOnlyUser As Boolean = True
     Private Contact As String = Nothing
     Private con As OleDb.OleDbConnection
     Public CmdList As New List(Of OleDb.OleDbCommand)
@@ -81,6 +81,11 @@ Public Class CentralFunctions
         'Executes all commands in CmdList
         'Option to not commit - For simulatenous transactions
 
+        If ReadOnlyUser = True Then
+            MsgBox("Read only permissions have been granted")
+            Exit Sub
+        End If
+
         Dim Attempts As Integer = 0
 
         'Open connection - assign a transaction
@@ -121,6 +126,11 @@ Public Class CentralFunctions
     End Sub
 
     Public Sub ExecuteSQL(SQLCodeOrCmd As Object) 'Execute a SQL Command - No return
+
+        If ReadOnlyUser = True Then
+            MsgBox("Read only permissions have been granted")
+            Exit Sub
+        End If
 
         Dim Cmd As OleDb.OleDbCommand = Nothing
 
@@ -177,6 +187,11 @@ Public Class CentralFunctions
     End Sub
 
     Private Sub TryCommit()
+
+        If ReadOnlyUser = True Then
+            MsgBox("Read only permissions have been granted")
+            Exit Sub
+        End If
 
         Dim Attempts As Integer = 0
 
@@ -273,6 +288,12 @@ Public Class CentralFunctions
 
     Public Sub UpdateBackend(ctl As Object, Optional DisplayMessage As Boolean = True)
         'Saving function to update access backend
+
+
+        If ReadOnlyUser = True Then
+            MsgBox("Read only permissions have been granted")
+            Exit Sub
+        End If
 
         Dim ErrorMessage As Exception = Nothing
 
@@ -487,6 +508,15 @@ Public Class CentralFunctions
         If SELECTCount(SQLString) = 0 Then
             MsgBox(ErrorMessage)
             Call Quitter()
+        Else
+            SQLString = "SELECT * FROM " & UserTable & " WHERE " & UserField & "='" & GetUserName() & "'" &
+                    " AND [Read]=True"
+            If SELECTCount(SQLString) <> 0 Then
+                ReadOnlyUser = True
+                MsgBox("Read only permissions have been granted")
+            Else
+                ReadOnlyUser = False
+            End If
         End If
 
     End Sub
@@ -522,8 +552,7 @@ Public Class CentralFunctions
                           UserFld As String,
                           LockTbl As String,
                           ContactPerson As String,
-                          ConnectionString As String,
-                          ActiveUsersTbl As String)
+                          ConnectionString As String)
 
         UserTable = UserTbl
         UserField = UserFld
@@ -531,8 +560,6 @@ Public Class CentralFunctions
         Contact = ContactPerson
         ConnectString = ConnectionString
         con = New OleDb.OleDbConnection(ConnectString)
-        ActiveUsersTable = ActiveUsersTbl
-
 
     End Sub
 
@@ -681,21 +708,27 @@ Public Class CentralFunctions
     End Sub
 
     Public Sub SetupFilterCombo(Ctl As ComboBox,
-                                CSV_1_Value_2_Display As String,
-                                Optional DefaultEmpty As Boolean = True)
+                                ValueMember As String,
+                                DisplayMember As String,
+                                Optional BlankOption As Boolean = True,
+                                Optional AdditionalSQL As String = "")
 
         Try
 
-            Dim StringArray As String() = CSV_1_Value_2_Display.Split(",")
-            If StringArray.Count = 1 Then Throw New ArgumentException("Only single arguement entered for SetupFilterCombo")
-
-            Ctl.ValueMember = StringArray(0).ToString
-            Ctl.DisplayMember = StringArray(1).ToString
+            Ctl.ValueMember = ValueMember
+            Ctl.DisplayMember = DisplayMember
 
             AddHandler Ctl.SelectionChangeCommitted, AddressOf FilterCombo
             AddHandler Ctl.Enter, AddressOf RefreshCombo
 
-            If DefaultEmpty <> True Then RefreshCombo(Ctl, Ctl, DefaultEmpty)
+            If AdditionalSQL <> "" Then
+                Ctl.DataSource = TempDataTable(AdditionalSQL)
+                Ctl.SelectedIndex = -1
+            End If
+
+            Ctl.Tag = BlankOption
+            If BlankOption <> True Then RefreshCombo(Ctl, Ctl)
+
 
         Catch ex As Exception
             DefaultError(ex)
@@ -703,46 +736,67 @@ Public Class CentralFunctions
 
     End Sub
 
-    Protected Sub RefreshCombo(ctl As ComboBox, e As Object, Optional DefaultEmpty As Boolean = True)
+    Protected Sub RefreshCombo(ctl As ComboBox, e As Object)
 
         Dim CurrentChoice As String = ctl.SelectedValue
-
+        Dim BlankOption As Boolean = ctl.Tag
         Dim Dt As DataTable
+        Dim OrigDT As DataTable = ctl.DataSource
+        Dim View As DataView
 
-        Dim View As DataView = New DataView(CurrentDataSet.Tables(0),
-        ctl.ValueMember & "<>'' AND " & ctl.DisplayMember & "<>''",
-                                            "", DataViewRowState.CurrentRows)
+        Try
+            View = New DataView(CurrentDataSet.Tables(0),
+            ctl.ValueMember & "<>'' AND " & ctl.DisplayMember & "<>'' AND " &
+            ctl.DisplayMember & " is not null", "", DataViewRowState.CurrentRows)
+            If ctl.ValueMember = ctl.DisplayMember Then
+                Dt = View.ToTable(True, ctl.ValueMember.ToString)
+            Else
+                Dt = View.ToTable(True, ctl.ValueMember, ctl.DisplayMember)
+            End If
+        Catch ex As Exception
+            Dt = New DataTable
+            Dt.Columns.Add(ctl.ValueMember)
+            If ctl.ValueMember <> ctl.DisplayMember Then Dt.Columns.Add(ctl.DisplayMember)
+        End Try
 
-        If ctl.ValueMember = ctl.DisplayMember Then
-            Dt = View.ToTable(True, ctl.ValueMember.ToString)
-        Else
-            Dt = View.ToTable(True, ctl.ValueMember, ctl.DisplayMember)
+
+
+        If OrigDT IsNot Nothing Then
+            For Each row As DataRow In OrigDT.Rows
+                If Dt.Columns.Count = 2 Then
+                    Dt.Rows.Add(row.Item(0), row.Item(1))
+                Else
+                    Dt.Rows.Add(row.Item(0))
+                End If
+            Next
         End If
 
-        Dim DtRow As DataRow = Dt.NewRow
-        DtRow(ctl.ValueMember) = ""
-        If ctl.ValueMember.ToString <> ctl.DisplayMember Then DtRow(ctl.DisplayMember) = ""
-        Dt.Rows.Add(DtRow)
-
+                If BlankOption = True Then
+            Dim DtRow As DataRow = Dt.NewRow
+            DtRow(ctl.ValueMember) = ""
+            If ctl.ValueMember.ToString <> ctl.DisplayMember Then DtRow(ctl.DisplayMember) = ""
+            Dt.Rows.Add(DtRow)
+        Else
+            For Each row As DataRow In Dt.Rows
+                If String.IsNullOrEmpty(row.Item(0).ToString) Then row.Delete()
+            Next
+        End If
 
         Dim dataView As New DataView(Dt)
         dataView.Sort = ctl.DisplayMember & " ASC"
-        Dim Dt2 As DataTable = dataView.ToTable()
+        Dim Dt2 As DataTable = dataView.ToTable(True)
         Dt = Nothing
         View = Nothing
 
         ctl.DataSource = Dt2
-
-        If DefaultEmpty = False Then
-            ctl.SelectedValue = Dt2.Rows(1).Item(0)
-            FilterCombo(ctl, New EventArgs)
-        End If
 
         If CurrentChoice <> "" Then ctl.SelectedValue = CurrentChoice
 
     End Sub
 
     Protected Sub FilterCombo(sender As ComboBox, e As EventArgs)
+
+        If CurrentDataSet Is Nothing Then Exit Sub
 
         Dim CtlValue As String = ""
 
@@ -757,7 +811,6 @@ Public Class CentralFunctions
         Dim PrevLoc As Long = InStr(RowFilter, sender.ValueMember & "=")
         Dim ANDLoc As Long
         Dim ReplaceString As String = ""
-
 
         If PrevLoc <> 0 Then
             ANDLoc = InStr(PrevLoc, RowFilter, "AND", 0)
@@ -783,7 +836,6 @@ Public Class CentralFunctions
         FilterString = RowFilter & FilterString
 
         CurrentDataSet.Tables(0).DefaultView.RowFilter = FilterString
-
 
     End Sub
 

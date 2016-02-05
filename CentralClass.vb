@@ -14,7 +14,7 @@ Public Class CentralFunctions
     Private UserTable As String = Nothing
     Private UserField As String = Nothing
     Private LockTable As String = Nothing
-    Private ReadOnlyUser As Boolean = True
+    Public ReadOnlyUser As Boolean = True
     Private Contact As String = Nothing
     Private con As OleDb.OleDbConnection
     Public CmdList As New List(Of OleDb.OleDbCommand)
@@ -578,11 +578,15 @@ Public Class CentralFunctions
     End Function
 
     Public Sub OpenCon()
+
         If (con.State = ConnectionState.Closed) Then con.Open()
+
     End Sub
 
     Public Sub CloseCon()
+
         If (con.State = ConnectionState.Open) Then con.Close()
+
     End Sub
 
     Public Function SQLDate(varDate As Object) As String

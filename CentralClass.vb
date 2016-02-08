@@ -11,6 +11,7 @@ Public Class CentralFunctions
     Public CurrentDataAdapter As OleDb.OleDbDataAdapter = Nothing
     Public CurrentBindingSource As BindingSource = Nothing
     Private ConnectString As String = Nothing
+    Private AuditTable As String = Nothing
     Private UserTable As String = Nothing
     Private UserField As String = Nothing
     Private LockTable As String = Nothing
@@ -70,7 +71,7 @@ Public Class CentralFunctions
             GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
                     "','" & AuditTable & "','" & Left(AuditValues, 254) & "'"
-            AuditSQLCode = "INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
+            AuditSQLCode = "INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
             Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
             CmdList.Add(AuditCmd)
         End If
@@ -158,7 +159,7 @@ Public Class CentralFunctions
             GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
                     "','" & AuditTable & "','" & Left(AuditValues, 254) & "'"
-            AuditSQLCode = "INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
+            AuditSQLCode = "INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
             Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
             AuditCmd.Transaction = CurrentTrans
             AuditCmd.ExecuteNonQuery()
@@ -353,7 +354,7 @@ Public Class CentralFunctions
 
                 Dim CombineInsert As String = "'" & Person & "','" & Operation &
                     "','" & Table & "','" & Left(AuditValues, 255) & "'"
-                AddToMassSQL("INSERT INTO AUDIT ([Person], [Action], [TName], [NValue]) VALUES (" & CombineInsert & ")", False)
+                AddToMassSQL("INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & CombineInsert & ")", False)
                 AuditValues = vbNullString
 
             Next
@@ -552,8 +553,10 @@ Public Class CentralFunctions
                           UserFld As String,
                           LockTbl As String,
                           ContactPerson As String,
-                          ConnectionString As String)
+                          ConnectionString As String,
+                          AuditTbl As String)
 
+        AuditTable = AuditTbl
         UserTable = UserTbl
         UserField = UserFld
         LockTable = LockTbl

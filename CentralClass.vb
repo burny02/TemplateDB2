@@ -64,13 +64,13 @@ Public Class CentralFunctions
 
         If Audit = True Then
             Dim AuditPerson As String = vbNullString
-            Dim AuditTable As String = vbNullString
             Dim AuditValues As String = vbNullString
+            Dim ActionTable As String = vbNullString
             Dim AuditAction As String = vbNullString
 
-            GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
+            GetSQLAudit(Cmd.CommandText, AuditAction, ActionTable, AuditPerson, AuditValues)
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
-                    "','" & AuditTable & "','" & Left(AuditValues, 254) & "'"
+                    "','" & ActionTable & "','" & Left(AuditValues, 254) & "'"
             AuditSQLCode = "INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
             Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
             CmdList.Add(AuditCmd)
@@ -144,8 +144,8 @@ Public Class CentralFunctions
 
         Dim Attempts As Integer = 0
         Dim AuditPerson As String = vbNullString
-        Dim AuditTable As String = vbNullString
         Dim AuditValues As String = vbNullString
+        Dim ActionTable As String = vbNullString
         Dim AuditAction As String = vbNullString
 
         'Open connection - assign a transaction
@@ -156,9 +156,9 @@ Public Class CentralFunctions
 
         Try
             'Audit
-            GetSQLAudit(Cmd.CommandText, AuditAction, AuditTable, AuditPerson, AuditValues)
+            GetSQLAudit(Cmd.CommandText, AuditAction, ActionTable, AuditPerson, AuditValues)
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
-                    "','" & AuditTable & "','" & Left(AuditValues, 254) & "'"
+                    "','" & ActionTable & "','" & Left(AuditValues, 254) & "'"
             AuditSQLCode = "INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
             Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
             AuditCmd.Transaction = CurrentTrans

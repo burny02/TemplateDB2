@@ -58,6 +58,7 @@
 
         AddHandler ctl.DataError, AddressOf DataGridViewDataError
         AddHandler ctl.CellEnter, AddressOf GridComboEnter
+        AddHandler ctl.MouseWheel, AddressOf ControlWheelScroll
 
     End Sub
 

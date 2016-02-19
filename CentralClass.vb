@@ -2,6 +2,13 @@
 Imports System.Data
 Imports System.Data.OleDb.OleDbConnection
 
+Public Class MyCombo
+    Public ComboName As String
+    Public Blank As Boolean
+    Public AdditionalSQL As String
+    Public WhichCmb As ComboBox
+    Public TableOfData As DataTable
+End Class
 
 Public Class CentralFunctions
     Declare Function GetUserName Lib "advapi32.dll" Alias _
@@ -21,6 +28,7 @@ Public Class CentralFunctions
     Public CmdList As New List(Of OleDb.OleDbCommand)
     Private CurrentTrans As OleDb.OleDbTransaction = Nothing
     Public DataItemCollection As New Collection
+    Private ComboCollection As New Collection
 
     Public Function SELECTCount(SQLCode As String) As Long
         'Execute a SQL Command and return the number of records
@@ -456,7 +464,7 @@ Public Class CentralFunctions
             OpenCon()
             'New temporary data adapter and dataset
             Dim TempDataAdapter = New OleDb.OleDbDataAdapter(SQLCode, con)
-            TempDataTable = New DataTable()
+            TempDataTable = New DataTable
             'Use temp adapter to fill temp dataset
             TempDataAdapter.Fill(TempDataTable)
 
@@ -724,14 +732,21 @@ Public Class CentralFunctions
             Ctl.DisplayMember = DisplayMember
 
             AddHandler Ctl.SelectionChangeCommitted, AddressOf FilterCombo
-            AddHandler Ctl.Enter, AddressOf RefreshCombo
+            AddHandler Ctl.DropDown, AddressOf RefreshCombo
 
-            If AdditionalSQL <> "" Then
-                Ctl.DataSource = TempDataTable(AdditionalSQL)
-                Ctl.SelectedIndex = -1
-            End If
+            Dim Cmb As New MyCombo()
+            Cmb.AdditionalSQL = AdditionalSQL
+            Cmb.Blank = BlankOption
+            Cmb.ComboName = Ctl.Name
+            Cmb.WhichCmb = Ctl
+            If AdditionalSQL <> "" Then Cmb.TableOfData = TempDataTable(AdditionalSQL)
 
-            Ctl.Tag = BlankOption
+            Try
+                ComboCollection.Remove(Cmb.ComboName)
+            Catch ex As Exception
+            End Try
+            ComboCollection.Add(Cmb, Cmb.ComboName)
+
             If BlankOption <> True Then
                 RefreshCombo(Ctl, Ctl)
                 FilterCombo(Ctl, New EventArgs)
@@ -748,15 +763,34 @@ Public Class CentralFunctions
     Protected Sub RefreshCombo(ctl As ComboBox, e As Object)
 
         Dim CurrentChoice As String = ctl.SelectedValue
-        Dim BlankOption As Boolean = ctl.Tag
         Dim Dt As DataTable
-        Dim OrigDT As DataTable = ctl.DataSource
         Dim View As DataView
+        Dim CurrentFilter As String = vbNullString
+        Dim FilterString As String = vbNullString
+
+        Dim ComboInfo As MyCombo = ComboCollection.Item(ctl.Name)
+        Dim AdditionalSQL As String = ComboInfo.AdditionalSQL
+        Dim BlankOption = ComboInfo.Blank
+
+
+        Try
+            CurrentFilter = CurrentDataSet.Tables(0).DefaultView.RowFilter
+        Catch ex As Exception
+        End Try
+
+        If CurrentFilter = "" Or BlankOption = False Then
+            FilterString = ctl.ValueMember & "<>'' AND " & ctl.DisplayMember & "<>'' " &
+            "AND " & ctl.DisplayMember & " is not null"
+        Else
+            FilterString = ctl.ValueMember & "<>'' AND " & ctl.DisplayMember & "<>'' " &
+            "AND " & CurrentFilter & " AND " &
+            ctl.DisplayMember & " is not null"
+        End If
 
         Try
             View = New DataView(CurrentDataSet.Tables(0),
-            ctl.ValueMember & "<>'' AND " & ctl.DisplayMember & "<>'' AND " &
-            ctl.DisplayMember & " is not null", "", DataViewRowState.CurrentRows)
+            FilterString, "", DataViewRowState.CurrentRows)
+
             If ctl.ValueMember = ctl.DisplayMember Then
                 Dt = View.ToTable(True, ctl.ValueMember.ToString)
             Else
@@ -768,9 +802,11 @@ Public Class CentralFunctions
             If ctl.ValueMember <> ctl.DisplayMember Then Dt.Columns.Add(ctl.DisplayMember)
         End Try
 
+        Dim OrigDT As DataTable
 
 
-        If OrigDT IsNot Nothing Then
+        If AdditionalSQL <> "" Then
+            OrigDT = ComboInfo.TableOfData
             For Each row As DataRow In OrigDT.Rows
                 If Dt.Columns.Count = 2 Then
                     Dt.Rows.Add(row.Item(0), row.Item(1))
@@ -780,7 +816,7 @@ Public Class CentralFunctions
             Next
         End If
 
-                If BlankOption = True Then
+        If BlankOption = True Then
             Dim DtRow As DataRow = Dt.NewRow
             DtRow(ctl.ValueMember) = ""
             If ctl.ValueMember.ToString <> ctl.DisplayMember Then DtRow(ctl.DisplayMember) = ""
@@ -800,6 +836,8 @@ Public Class CentralFunctions
         ctl.DataSource = Dt2
 
         If CurrentChoice <> "" Then ctl.SelectedValue = CurrentChoice
+        'ctl.DataSource = TempDataTable(AdditionalSQL)
+        'ctl.SelectedIndex = -1
 
     End Sub
 
@@ -809,11 +847,28 @@ Public Class CentralFunctions
 
         Dim CtlValue As String = ""
 
-        If IsNumeric(sender.SelectedValue) = True Then
+        Dim ComboInfo As MyCombo = ComboCollection.Item(sender.Name)
+        Dim AdditionalSQL As String = ComboInfo.AdditionalSQL
+        Dim BlankOption = ComboInfo.Blank
+
+        If BlankOption = False Then
+            For Each cmb As MyCombo In ComboCollection
+                If sender IsNot cmb.WhichCmb Then
+                    If cmb.Blank = True Then
+                        cmb.WhichCmb.SelectedValue = ""
+                        FilterCombo(cmb.WhichCmb, New EventArgs)
+                    End If
+                End If
+            Next
+        End If
+
+        If IsNumeric(sender.ValueMember) = True Then
             CtlValue = sender.SelectedValue
         Else
             If sender.SelectedValue <> "" Then CtlValue = "'" & sender.SelectedValue & "'"
         End If
+
+
 
         Dim FilterString As String = vbNullString
         Dim RowFilter As String = CurrentDataSet.Tables(0).DefaultView.RowFilter
@@ -852,12 +907,23 @@ Public Class CentralFunctions
 
         For Each control In DataItemCollection
             If (TypeOf control Is DataGridView) Then
-                control.Columns.Clear()
-                control.DataSource = Nothing
+                Try
+                    control.Columns.Clear()
+                    control.DataSource = Nothing
+                Catch ex As Exception
+                End Try
             End If
 
         Next
 
     End Sub
+
+
+    Protected Sub ControlWheelScroll(sender As DataGridView, e As MouseEventArgs)
+
+        sender.Focus()
+
+    End Sub
+
 
 End Class

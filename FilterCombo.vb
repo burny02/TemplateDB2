@@ -16,6 +16,7 @@
         AddHandler Me.DropDown, AddressOf RefreshCombo
         AddHandler Me.SelectionChangeCommitted, AddressOf RefreshSubCombo
         AddHandler Me.SelectionChangeCommitted, AddressOf FilterDataset
+        AddHandler Me.KeyDown, AddressOf KeyDDown
     End Sub
 
     Public Sub RefreshCombo()
@@ -78,10 +79,12 @@
 
         Try
             For Each row As DataRow In ClassContaininingConnection.TempDataTable(TempString).Rows
+                If IsDBNull(row.Item(DisplayMember)) Then Continue For
+                If IsDBNull(row.Item(ValueMember)) Then Continue For
                 If Dt.Columns.Count = 2 Then
-                    Dt.Rows.Add(row.Item(ValueMember), row.Item(DisplayMember))
+                    Dt.Rows.Add(Trim(row.Item(ValueMember)), Trim(row.Item(DisplayMember)))
                 Else
-                    Dt.Rows.Add(row.Item(ValueMember))
+                    Dt.Rows.Add(Trim(row.Item(ValueMember)))
                 End If
             Next
 
@@ -103,8 +106,15 @@
         Dt.Columns.Add(ValueMember, Type.GetType("System.String"))
         If ValueMember <> DisplayMember Then Dt.Columns.Add(DisplayMember, Type.GetType("System.String"))
 
+
         Dim TempView As New DataView(ClassContaininingConnection.CurrentDataSet.Tables(0),
                             FilterDataset(Me, New EventArgs, True), DisplayMember & " ASC", DataViewRowState.CurrentRows)
+
+        For Each rowView As DataRowView In TempView
+            Dim row As DataRow = rowView.Row
+            If IsDBNull(row.Item(DisplayMember)) Then Continue For
+            row.Item(DisplayMember) = Trim(row.Item(DisplayMember))
+        Next
 
         If ValueMember <> DisplayMember Then
             Dt = TempView.ToTable(True, ValueMember, DisplayMember)
@@ -266,5 +276,9 @@
 
     End Sub
 
+    Private Sub KeyDDown(sender As Object, e As KeyEventArgs)
 
+        e.SuppressKeyPress = True
+
+    End Sub
 End Class

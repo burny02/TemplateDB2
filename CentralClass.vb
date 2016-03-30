@@ -110,8 +110,18 @@ Public Class CentralFunctions
             Dim AuditAction As String = vbNullString
 
             GetSQLAudit(Cmd.CommandText, AuditAction, ActionTable, AuditPerson, AuditValues)
+
+            AuditPerson = Replace(AuditPerson, "'", "")
+            AuditValues = Replace(AuditValues, "'", "")
+            ActionTable = Replace(ActionTable, "'", "")
+            AuditAction = Replace(AuditAction, "'", "")
+
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
                     "','" & ActionTable & "','" & AuditValues & "'"
+
+
+
+
             AuditSQLCode = "INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
             Dim AuditCmd = New OleDb.OleDbCommand(AuditSQLCode, con)
             CmdList.Add(AuditCmd)
@@ -198,6 +208,12 @@ Public Class CentralFunctions
         Try
             'Audit
             GetSQLAudit(Cmd.CommandText, AuditAction, ActionTable, AuditPerson, AuditValues)
+
+            AuditPerson = Replace(AuditPerson, "'", "")
+            AuditValues = Replace(AuditValues, "'", "")
+            ActionTable = Replace(ActionTable, "'", "")
+            AuditAction = Replace(AuditAction, "'", "")
+
             Dim AuditSQLCode As String = "'" & AuditPerson & "','" & AuditAction &
                     "','" & ActionTable & "','" & AuditValues & "'"
             AuditSQLCode = "INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & AuditSQLCode & ")"
@@ -341,7 +357,7 @@ Public Class CentralFunctions
         'Is the data dirty / has errors that have auto-undone
         If CurrentDataSet.HasChanges() = False Then
             If DisplayMessage = True Then MsgBox("Errors present/No changes to upload")
-            Call Refresher(ctl)
+            If Not IsNothing(ctl) Then Call Refresher(ctl)
             CurrentDataSet.Tables(0).DefaultView.RowFilter = TempFilter
             Exit Sub
         End If
@@ -404,6 +420,11 @@ Public Class CentralFunctions
                     AuditValues = AuditValues & Replace(row.Item(col, Version).ToString, "'", "") & ","
                 Next
 
+                AuditValues = Replace(AuditValues, "'", "")
+                Person = Replace(Person, "'", "")
+                Operation = Replace(Operation, "'", "")
+                Table = Replace(Table, "'", "")
+
                 Dim CombineInsert As String = "'" & Person & "','" & Operation &
                     "','" & Table & "','" & AuditValues & "'"
                 AddToMassSQL("INSERT INTO " & AuditTable & " ([Person], [Action], [TName], [NValue]) VALUES (" & CombineInsert & ")", False)
@@ -420,7 +441,7 @@ Public Class CentralFunctions
             If DisplayMessage = True Then MsgBox("Table Updated")
             'Remove any error messages & accept changes
             CurrentDataSet.AcceptChanges()
-            Call Refresher(ctl)
+            If Not IsNothing(ctl) Then Call Refresher(ctl)
             CurrentDataSet.Tables(0).DefaultView.RowFilter = TempFilter
 
         Catch ex As Exception
@@ -869,4 +890,11 @@ Public Class CentralFunctions
         Return MyColumn
 
     End Function
+
+    Protected Sub TabChanger(sender As Object, e As EventArgs)
+
+        ComboCollection.Clear()
+
+    End Sub
+
 End Class

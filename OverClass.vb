@@ -39,6 +39,8 @@
                 SetDataGrid(Control)
             ElseIf (TypeOf Control Is Button) Then
                 DataItemCollection.Add(Control, Control.Name)
+            ElseIf (TypeOf Control Is tabcontrol) Then
+                AddHandler ctl.TabIndexChanged, AddressOf TabChanger
             End If
 
             If Control.HasChildren Then

@@ -29,6 +29,11 @@
 
             If Control.Name = "splitter" Then Continue For
 
+            Try
+                DataItemCollection.Remove(Control.name)
+            Catch ex As Exception
+            End Try
+
             If (TypeOf ctl Is Form) Then SetForm(ctl)
 
             If (TypeOf Control Is ComboBox) Then
@@ -39,7 +44,7 @@
                 SetDataGrid(Control)
             ElseIf (TypeOf Control Is Button) Then
                 DataItemCollection.Add(Control, Control.Name)
-            ElseIf (TypeOf Control Is tabcontrol) Then
+            ElseIf (TypeOf Control Is TabControl) Then
                 AddHandler ctl.TabIndexChanged, AddressOf TabChanger
             End If
 

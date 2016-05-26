@@ -27,19 +27,6 @@ Public Class MyCmbColumn
 
 End Class
 
-Public Class MyCombo
-    Public ComboName As String = ""
-    Public Blank As Boolean = True
-    Public FullDataSQL As String = ""
-    Public WhichCmb As ComboBox = Nothing
-    Public TableOfData As DataTable = Nothing
-    Public LiveData As Boolean = False
-    Public ActiveFilter As String = ""
-    Public SecondColumnSQL As String = ""
-    Public OnlyFilterableBy As New Collection
-End Class
-
-
 Public Class CentralFunctions
     Declare Function GetUserName Lib "advapi32.dll" Alias _
         "GetUserNameA" (ByVal lpBuffer As String,
@@ -51,7 +38,6 @@ Public Class CentralFunctions
     Private AuditTable As String = Nothing
     Private UserTable As String = Nothing
     Private UserField As String = Nothing
-    Private LockTable As String = Nothing
     Public ReadOnlyUser As Boolean = True
     Private Contact As String = Nothing
     Private con As OleDb.OleDbConnection
@@ -483,7 +469,7 @@ Public Class CentralFunctions
         Try
 
             'Is the dataset dirty?
-            If CurrentDataSet.HasChanges() Then
+            If ReadOnlyUser = False And CurrentDataSet.HasChanges() Then
 
                 'Ask user if they want to proceed and lose data?
                 If (MsgBox("Changes To data will be lost unless saved first. Do you wish To discard changes?", vbYesNo) = vbNo) Then Cancel = True
@@ -600,8 +586,10 @@ Public Class CentralFunctions
     Public Sub Refresher(DataItem As Object)
 
         Try
+            Dim CurrentFilter As String = CurrentDataSet.Tables(0).DefaultView.RowFilter
             Call CreateDataSet(CurrentDataAdapter.SelectCommand.CommandText, CurrentBindingSource, DataItem)
             DataItem.Parent.Refresh()
+            CurrentDataSet.Tables(0).DefaultView.RowFilter = CurrentFilter
         Catch ex As Exception
             CloseCon()
             Throw
@@ -609,42 +597,31 @@ Public Class CentralFunctions
 
     End Sub
 
-    Public Sub LoginCheck()
+    Public Function LoginCheck(Optional AdditionalTable() As String = Nothing) As DataTable()
 
-        Dim SQLString As String = "SELECT * FROM " & UserTable & " WHERE " & UserField & "='" & GetUserName() & "'"
+        Dim SQLString(0) As String
+        SQLString(0) = "SELECT * FROM " & UserTable & " WHERE " & UserField & "='" & GetUserName() & "'"
+        If AdditionalTable IsNot Nothing Then
+            ReDim Preserve SQLString(SQLString.Length + AdditionalTable.Length - 1)
+            Array.Copy(AdditionalTable, 0, SQLString, 1, AdditionalTable.Length)
+        End If
+        Dim dt() As DataTable = MultiTempDataTable(SQLString)
         Dim ErrorMessage As String = "You do not have permission to use this database. Please contact David Burnside or " & Contact
 
-        If SELECTCount(SQLString) = 0 Then
+        If dt(0).Rows.Count = 0 Then
             MsgBox(ErrorMessage)
             Call Quitter()
         Else
-            SQLString = "SELECT * FROM " & UserTable & " WHERE " & UserField & "='" & GetUserName() & "'" &
-                    " AND [Read]=True"
-            If SELECTCount(SQLString) <> 0 Then
+            If dt(0).Rows(0).Item("Read") = True Then
                 ReadOnlyUser = True
             Else
                 ReadOnlyUser = False
             End If
         End If
 
-    End Sub
+        Return dt
 
-    Public Sub LockCheck()
-
-        Dim SQLString As String = "SELECT * FROM " & LockTable
-        Dim ErrorMessage As String = "The database is currently locked. Please contact David Burnside"
-
-        If SELECTCount(SQLString) <> 0 Then
-            If GetUserName() <> "d.burnside" Then
-                MsgBox(ErrorMessage)
-                Call Quitter()
-            Else
-                MsgBox("Database is locked")
-
-            End If
-        End If
-
-    End Sub
+    End Function
 
     Public Function GetUserName() As String
 
@@ -658,7 +635,6 @@ Public Class CentralFunctions
 
     Public Sub SetPrivate(UserTbl As String,
                           UserFld As String,
-                          LockTbl As String,
                           ContactPerson As String,
                           ConnectionString As String,
                           AuditTbl As String)
@@ -666,7 +642,6 @@ Public Class CentralFunctions
         AuditTable = AuditTbl
         UserTable = UserTbl
         UserField = UserFld
-        LockTable = LockTbl
         Contact = ContactPerson
         ConnectString = ConnectionString
         con = New OleDb.OleDbConnection(ConnectString)

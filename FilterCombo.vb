@@ -106,9 +106,13 @@
         Dt.Columns.Add(ValueMember, Type.GetType("System.String"))
         If ValueMember <> DisplayMember Then Dt.Columns.Add(DisplayMember, Type.GetType("System.String"))
 
+        Dim TempDT As DataTable = ClassContaininingConnection.CurrentDataSet.Tables(0).Copy
 
-        Dim TempView As New DataView(ClassContaininingConnection.CurrentDataSet.Tables(0),
-                            FilterDataset(Me, New EventArgs, True), DisplayMember & " ASC", DataViewRowState.CurrentRows)
+        Dim TempView As New DataView(TempDT,
+                            FilterDataset(Me, New EventArgs, True), DisplayMember & " ASC",
+                            DataViewRowState.CurrentRows)
+
+
 
         For Each rowView As DataRowView In TempView
             Dim row As DataRow = rowView.Row
@@ -191,6 +195,10 @@
 
     Private Sub SetOverclass(ConnectionClass As OverClass)
         ClassContaininingConnection = ConnectionClass
+        Try
+            ClassContaininingConnection.ComboCollection.Remove(Me.Name)
+        Catch ex As Exception
+        End Try
         ClassContaininingConnection.ComboCollection.Add(Me, Me.Name)
     End Sub
 
@@ -231,7 +239,7 @@
         For Each cmb As FilterCombo In ClassContaininingConnection.ComboCollection
             If FilterSelf = True And cmb Is Me Then Continue For
             If IsNothing(cmb.SelectedValue) Then Continue For
-            If cmb.SelectedValue = "" Then Continue For
+            If CStr(cmb.SelectedValue) = "" Then Continue For
             If cmb.Filter = False Then Continue For
             If cmb.FilterColumn = "" Then Continue For
 

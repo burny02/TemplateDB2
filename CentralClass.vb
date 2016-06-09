@@ -1,6 +1,7 @@
 ﻿Option Explicit On
 Imports System.Data
 Imports System.Data.OleDb.OleDbConnection
+Imports System.Threading
 
 Public Class MyCmbColumn
     Inherits DataGridViewComboBoxColumn
@@ -46,6 +47,7 @@ Public Class CentralFunctions
     Public DataItemCollection As New Collection
     Public ComboCollection As New Collection
     Public ComboColumnCollection As New Collection
+    Private ConnectionThread As System.Threading.Thread
 
     Public Function SELECTCount(SQLCode As String) As Long
         'Execute a SQL Command and return the number of records
@@ -664,13 +666,24 @@ Public Class CentralFunctions
 
     Public Sub OpenCon()
 
-        If (con.State = ConnectionState.Closed) Then con.Open()
+        If Not IsNothing(ConnectionThread) Then
+            If ConnectionThread.IsAlive = True Then
+                ConnectionThread.Join()
+            End If
+        End If
+
+        If con.State = ConnectionState.Closed Then con.Open()
 
     End Sub
 
     Public Sub CloseCon()
 
-        If (con.State = ConnectionState.Open) Then con.Close()
+        If (con.State = ConnectionState.Open) Then
+            ConnectionThread = New System.Threading.Thread(AddressOf DoClose)
+            ConnectionThread.IsBackground = True
+            ConnectionThread.Start()
+        End If
+
 
     End Sub
 
@@ -869,6 +882,16 @@ Public Class CentralFunctions
     Protected Sub TabChanger(sender As Object, e As EventArgs)
 
         ComboCollection.Clear()
+
+    End Sub
+
+    Private Sub DoClose()
+
+        Try
+            con.Close()
+        Catch ex As Exception
+        End Try
+
 
     End Sub
 

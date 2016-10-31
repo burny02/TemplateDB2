@@ -102,9 +102,10 @@
 
     Private Sub GetInternal()
 
-        Dim Dt As DataTable = New DataTable
-        Dt.Columns.Add(ValueMember, Type.GetType("System.String"))
-        If ValueMember <> DisplayMember Then Dt.Columns.Add(DisplayMember, Type.GetType("System.String"))
+        Dim Dt As DataTable
+        Dim StringModifier As String = "[Str][Ing]"
+        DisplayMember = Replace(DisplayMember, StringModifier, "")
+        ValueMember = Replace(ValueMember, StringModifier, "")
 
         Dim TempDT As DataTable = ClassContaininingConnection.CurrentDataSet.Tables(0).Copy
 
@@ -125,6 +126,20 @@
         Else
             Dt = TempView.ToTable(True, ValueMember)
         End If
+
+        Dim NewValueMember = ValueMember & StringModifier
+        Dim NewDisplayMember = DisplayMember & StringModifier
+
+        Dt.Columns.Add(NewValueMember, Type.GetType("System.String"))
+        If ValueMember <> DisplayMember Then Dt.Columns.Add(NewDisplayMember, Type.GetType("System.String"))
+
+        For Each row As DataRow In Dt.Rows
+            row.Item(NewValueMember) = row.Item(ValueMember)
+            If ValueMember <> DisplayMember Then row.Item(NewDisplayMember) = row.Item(DisplayMember)
+        Next
+
+        ValueMember = NewValueMember
+        DisplayMember = NewDisplayMember
 
         StoredTable = Dt
         DataSource = Dt
@@ -235,6 +250,18 @@
         End If
 
         Dim OverallFilter As String = ""
+        Dim ChkListFilter As String = ""
+
+        For Each chklist As FilterList In ClassContaininingConnection.ListCollection
+            For Each row As DataRowView In chklist.CheckedItems
+                ChkListFilter = ChkListFilter & "(Convert(" & chklist.FilterColumn &
+                                                ", 'System.String')='" & row.Item(0).ToString & "')"
+            Next
+            ChkListFilter = Replace(ChkListFilter, ")(", ")OR(")
+            If ChkListFilter <> "" Then OverallFilter = "(" & ChkListFilter & ")"
+            ChkListFilter = ""
+        Next
+
 
         For Each cmb As FilterCombo In ClassContaininingConnection.ComboCollection
             If FilterSelf = True And cmb Is Me Then Continue For

@@ -1,7 +1,4 @@
 ﻿Option Explicit On
-Imports System.Data
-Imports System.Data.OleDb.OleDbConnection
-Imports System.Threading
 
 Public Class MyCmbColumn
     Inherits DataGridViewComboBoxColumn
@@ -46,6 +43,7 @@ Public Class CentralFunctions
     Private CurrentTrans As OleDb.OleDbTransaction = Nothing
     Public DataItemCollection As New Collection
     Public ComboCollection As New Collection
+    Public ListCollection As New Collection
     Public ComboColumnCollection As New Collection
     Private ConnectionThread As System.Threading.Thread
 
@@ -64,7 +62,7 @@ Public Class CentralFunctions
 
         Catch ex As Exception
             CloseCon()
-            Throw
+            Throw ex
 
         Finally
             'Close Off & Clean up
@@ -150,7 +148,7 @@ Public Class CentralFunctions
         Catch ex As Exception
             Call TryRollBack()
             CloseCon()
-            Throw
+            Throw ex
 
         Finally
             'Close Off & Clean up
@@ -219,7 +217,7 @@ Public Class CentralFunctions
         Catch ex As Exception
             Call TryRollBack()
             CloseCon()
-            Throw
+            Throw ex
 
         Finally
             'Close Off & Clean up
@@ -263,7 +261,7 @@ Public Class CentralFunctions
                 End If
 
             Catch ex2 As Exception
-                Throw
+                Throw ex2
                 Call TryRollBack()
 
             End Try
@@ -289,7 +287,7 @@ Public Class CentralFunctions
                 Threading.Thread.Sleep(10000)
                 Attempts = Attempts + 1
                 If Attempts = 4 Then
-                    Throw
+                    Throw ex
                     Exit Sub
                 End If
 
@@ -321,7 +319,7 @@ Public Class CentralFunctions
 
         Catch ex As Exception
             CloseCon()
-            Throw
+            Throw ex
 
         Finally
 
@@ -435,7 +433,7 @@ Public Class CentralFunctions
         Catch ex As Exception
             Call TryRollBack()
             CloseCon()
-            Throw
+            Throw ex
 
 
         Finally
@@ -488,7 +486,7 @@ Public Class CentralFunctions
 
         Catch ex As Exception
             CloseCon()
-            Throw
+            Throw ex
         Finally
             'Pass back whether clean up happened
             UnloadData = Cancel
@@ -517,7 +515,7 @@ Public Class CentralFunctions
 
         Catch ex As Exception
             CloseCon()
-            Throw
+            Throw ex
 
         Finally
 
@@ -542,7 +540,7 @@ Public Class CentralFunctions
 
         Catch ex As Exception
             CloseCon()
-            Throw
+            Throw ex
 
         Finally
 
@@ -574,7 +572,7 @@ Public Class CentralFunctions
 
         Catch ex As Exception
             CloseCon()
-            Throw
+            Throw ex
 
         Finally
             CreateCSVString = Output
@@ -594,7 +592,7 @@ Public Class CentralFunctions
             CurrentDataSet.Tables(0).DefaultView.RowFilter = CurrentFilter
         Catch ex As Exception
             CloseCon()
-            Throw
+            Throw ex
         End Try
 
     End Sub
@@ -666,24 +664,13 @@ Public Class CentralFunctions
 
     Public Sub OpenCon()
 
-        If Not IsNothing(ConnectionThread) Then
-            If ConnectionThread.IsAlive = True Then
-                ConnectionThread.Join()
-            End If
-        End If
-
-        If con.State = ConnectionState.Closed Then con.Open()
+        If (con.State = ConnectionState.Closed) Then con.Open()
 
     End Sub
 
     Public Sub CloseCon()
 
-        If (con.State = ConnectionState.Open) Then
-            ConnectionThread = New System.Threading.Thread(AddressOf DoClose)
-            ConnectionThread.IsBackground = True
-            ConnectionThread.Start()
-        End If
-
+        If (con.State = ConnectionState.Open) Then con.Close()
 
     End Sub
 
@@ -754,30 +741,10 @@ Public Class CentralFunctions
             e.Cancel = False
             Call ErrorHandler(sender, e)
         Catch ex As Exception
-            Throw
+            Throw ex
         End Try
     End Sub
 
-    Protected Sub GridComboBox(sender As Object, e As DataGridViewEditingControlShowingEventArgs)
-
-        If e.Control.GetType IsNot GetType(DataGridViewComboBoxEditingControl) Then Exit Sub
-        SendKeys.Send("{F4}")
-
-        Dim cmbBx As ComboBox = e.Control
-
-        If cmbBx IsNot Nothing Then
-            RemoveHandler cmbBx.DropDownClosed, AddressOf ComboBoxCell_DropDownClosed
-            AddHandler cmbBx.DropDownClosed, AddressOf ComboBoxCell_DropDownClosed
-        End If
-
-    End Sub
-
-    Public Sub ComboBoxCell_DropDownClosed(sender As Object, e As EventArgs)
-
-        Dim cmbBx As DataGridViewComboBoxEditingControl = sender
-        SendKeys.Send("{TAB}")
-
-    End Sub
 
     Protected Sub FormClosing(sender As Object, e As FormClosingEventArgs)
         If UnloadData() = True Then e.Cancel = True
@@ -796,7 +763,7 @@ Public Class CentralFunctions
                 Obj.Rows(e.RowIndex).Cells(e.ColumnIndex).ErrorText = e.exception.message
             End If
         Catch ex As Exception
-            Throw
+            Throw ex
         End Try
 
     End Sub
@@ -885,14 +852,67 @@ Public Class CentralFunctions
 
     End Sub
 
-    Private Sub DoClose()
+    Public Function CheckColumns(QueryGrid As DataGridView, RemoveIfBlank() As DataGridViewColumn, FlagIfBlank() As DataGridViewColumn) As Boolean
 
-        Try
-            con.Close()
-        Catch ex As Exception
-        End Try
+        Dim Outcome As Boolean = False
+
+        Dim DelRow As New Collection
+
+        For Each row As DataGridViewRow In QueryGrid.Rows
+
+            If row.IsNewRow = True Then Continue For
 
 
-    End Sub
+            'Remove blank rows
+            Dim i As Integer = 0
+            Dim BlankNo As Integer = 0
+
+
+            Do While i < RemoveIfBlank.Count
+                Dim ColumnIndex As Integer = RemoveIfBlank(i).Index
+                If Trim(row.Cells(ColumnIndex).Value & "") = "" Then BlankNo += 1
+                i += 1
+            Loop
+
+            If BlankNo = RemoveIfBlank.Count Then
+                DelRow.Add(row)
+                Continue For
+            End If
+
+            Dim j As Integer = 0
+
+            'Check missing fields
+            Do While j < FlagIfBlank.Count
+                Dim ColumnIndex As Integer = FlagIfBlank(j).Index
+                Dim CellString = Trim(row.Cells(ColumnIndex).Value & "")
+                If CellString = "" Then
+                    Outcome = True
+                    Dim k As Integer = 0
+                    Dim LineString As String = vbNullString
+                    Do While k < FlagIfBlank.Count
+                        Dim TempColIndex As Integer = FlagIfBlank(k).Index
+                        Dim ColString As String = Trim(row.Cells(TempColIndex).Value & "")
+                        If ColString <> "" Then LineString = LineString & ColString & "|"
+                        k += 1
+                    Loop
+                    MsgBox(QueryGrid.Columns(ColumnIndex).HeaderText & " has been left blank." & vbNewLine & vbNewLine & "Line: " & LineString)
+                    Exit For
+                End If
+                j += 1
+            Loop
+
+        Next
+
+        'Delete empty rows
+        For Each row As DataGridViewRow In DelRow
+
+            QueryGrid.Rows.Remove(row)
+
+        Next
+
+        CheckColumns = Outcome
+
+    End Function
+
 
 End Class

@@ -64,7 +64,6 @@
     Private Sub SetDataGrid(ctl As DataGridView)
 
         AddHandler ctl.DataError, AddressOf DataGridViewDataError
-        AddHandler ctl.EditingControlShowing, AddressOf GridComboBox
         AddHandler ctl.MouseWheel, AddressOf ControlWheelScroll
 
     End Sub
